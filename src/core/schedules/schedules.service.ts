@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Queue } from 'bull';
 import dayjs from 'dayjs';
 import {
   Diary,
@@ -9,8 +11,16 @@ import { NzService } from 'src/integrations/nz/nz.service';
 import { Schedule } from './interfaces/schedule.interface';
 
 @Injectable()
-export class SchedulesService {
-  constructor(private readonly nzService: NzService) {}
+export class SchedulesService implements OnModuleInit {
+  constructor(
+    @InjectQueue('schedules') private readonly schedulesQueue: Queue,
+    private readonly nzService: NzService,
+  ) {}
+
+  async onModuleInit() {
+    await this.schedulesQueue.add({ class: '11a' }, { jobId: '11a' });
+    await this.schedulesQueue.add({ class: '11b' }, { jobId: '11b' });
+  }
 
   async schedule(
     accessToken: string,
