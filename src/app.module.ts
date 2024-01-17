@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CoreModule } from './core/core.module';
+import { DatabaseModule } from './database/database.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
@@ -34,6 +35,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
       }),
     }),
     CoreModule,
+    DatabaseModule,
     IntegrationsModule,
   ],
 })

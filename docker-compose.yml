@@ -16,6 +16,18 @@ services:
       REDIS_HOSTS: local:cache:${REDIS_PORT}:0:${REDIS_PASSWORD}
     ports:
       - 8081:8081
+  database:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - ${POSTGRES_PORT}:5432
+    volumes:
+      - database:/var/lib/postgresql/data
 volumes:
   cache:
+    driver: local
+  database:
     driver: local
