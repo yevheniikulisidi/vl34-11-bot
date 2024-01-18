@@ -21,5 +21,6 @@ import { SchedulesService } from './schedules.service';
     NzModule,
   ],
   providers: [SchedulesService, SchedulesConsumer],
+  exports: [SchedulesService],
 })
 export class SchedulesModule {}

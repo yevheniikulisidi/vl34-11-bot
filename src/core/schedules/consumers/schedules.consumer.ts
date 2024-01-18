@@ -114,9 +114,26 @@ export class SchedulesConsumer {
     await this.cacheSchedule(_class, schedule, 7 * 24 * 60 * 60);
 
     if (now.day() === 0) {
+      const startOfNextWeek = now
+        .add(1, 'week')
+        .startOf('week')
+        .format('YYYY-MM-DD');
+      const endOfNextWeek = now
+        .add(1, 'week')
+        .endOf('week')
+        .format('YYYY-MM-DD');
+
       const [boySchedule2, girlSchedule2] = await Promise.all([
-        this.schedulesService.schedule(boyAccessToken, startOfWeek, endOfWeek),
-        this.schedulesService.schedule(girlAccessToken, startOfWeek, endOfWeek),
+        this.schedulesService.schedule(
+          boyAccessToken,
+          startOfNextWeek,
+          endOfNextWeek,
+        ),
+        this.schedulesService.schedule(
+          girlAccessToken,
+          startOfNextWeek,
+          endOfNextWeek,
+        ),
       ]);
 
       const schedule2 = this.mergeSchedules(boySchedule2, girlSchedule2);

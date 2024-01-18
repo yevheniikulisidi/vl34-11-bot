@@ -1,19 +1,22 @@
+import { InjectRedis } from '@nestjs-modules/ioredis';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bull';
 import dayjs from 'dayjs';
+import Redis from 'ioredis';
 import {
   Diary,
   DiaryCall,
   DiarySubject,
 } from 'src/integrations/nz/interfaces/diary.interface';
 import { NzService } from 'src/integrations/nz/nz.service';
-import { Schedule } from './interfaces/schedule.interface';
+import { Schedule, ScheduleLesson } from './interfaces/schedule.interface';
 
 @Injectable()
 export class SchedulesService implements OnModuleInit {
   constructor(
     @InjectQueue('schedules') private readonly schedulesQueue: Queue,
+    @InjectRedis() private readonly redis: Redis,
     private readonly nzService: NzService,
   ) {}
 
@@ -83,5 +86,28 @@ export class SchedulesService implements OnModuleInit {
           return match ? `https://meet.google.com/${match[1]}` : null;
         }) || null
     );
+  }
+
+  async getSchedule(
+    _class: '11a' | '11b',
+    date: string,
+  ): Promise<ScheduleLesson[]> {
+    const data = await this.redis.get(`${_class}:schedule:${date}`);
+
+    if (!data) {
+      return [];
+    }
+
+    return JSON.parse(data);
+  }
+
+  async updatedAt(_class: '11a' | '11b') {
+    const data = await this.redis.get(`${_class}:updated-at`);
+
+    if (!data) {
+      return null;
+    }
+
+    return data;
   }
 }
