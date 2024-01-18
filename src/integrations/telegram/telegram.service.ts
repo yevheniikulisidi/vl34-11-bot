@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Class } from '@prisma/client';
+import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
@@ -31,6 +32,7 @@ export class TelegramService implements OnModuleInit {
 
     // Texts
     this.onProfileText();
+    this.onScheduleText();
 
     // Callback queries
     this.onModifyUserClassCallbackQuery();
@@ -77,6 +79,96 @@ export class TelegramService implements OnModuleInit {
 
   getMainKeyboard() {
     return new Keyboard().text('📅 Розклад').text('👤 Профіль').resized();
+  }
+
+  onScheduleText() {
+    this.bot.hears('📅 Розклад', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+      const user = await this.usersRepository.findUser(userId);
+
+      if (!user) {
+        await ctx.reply('Створи профіль за допомогою команди /start');
+        return;
+      }
+
+      const scheduleText = 'Вибери день тижня:';
+      const now = dayjs().tz('Europe/Kyiv').locale('uk', { weekStart: 1 });
+      const startOfWeek = now.startOf('week');
+      const scheduleKeyboardButtons = [];
+
+      for (let i = 0; i < 5; i++) {
+        const dayDate = startOfWeek.add(i, 'day');
+        const dayName = [
+          'Понеділок',
+          'Вівторок',
+          'Середа',
+          'Четвер',
+          "П'ятниця",
+        ][i];
+        const isToday = dayDate.isToday();
+
+        const buttonText = `${dayName}${isToday ? ' (сьогодні)' : ''}`;
+        const buttonData = `schedule:${dayDate.format('YYYY-MM-DD')}`;
+
+        scheduleKeyboardButtons.push([
+          InlineKeyboard.text(buttonText, buttonData),
+        ]);
+      }
+
+      const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+
+      const [saturday, sunday] = await Promise.all([
+        this.schedulesService.getSchedule(
+          userClass,
+          startOfWeek.day(6).format('YYYY-MM-DD'),
+        ),
+        this.schedulesService.getSchedule(
+          userClass,
+          startOfWeek.day(7).format('YYYY-MM-DD'),
+        ),
+      ]);
+
+      if (saturday.length !== 0) {
+        const saturdayDate = startOfWeek.day(6);
+        const isToday = saturdayDate.isToday();
+
+        const buttonText = `Субота ${isToday ? ' (сьогодні)' : ''}`;
+        const buttonData = `schedule:${saturdayDate.format('YYYY-MM-DD')}`;
+
+        scheduleKeyboardButtons.push([
+          InlineKeyboard.text(buttonText, buttonData),
+        ]);
+      }
+
+      if (sunday.length !== 0) {
+        const sundayDate = startOfWeek.day(7);
+        const isToday = sundayDate.isToday();
+
+        const buttonText = `Неділя ${isToday ? ' (сьогодні)' : ''}`;
+        const buttonData = `schedule:${sundayDate.format('YYYY-MM-DD')}`;
+
+        scheduleKeyboardButtons.push([
+          InlineKeyboard.text(buttonText, buttonData),
+        ]);
+      }
+
+      if (now.day() === 0) {
+        const startOfNextWeek = now.add(1, 'week').startOf('week');
+
+        const buttonText = 'Наступний понеділок';
+        const buttonData = `schedule:${startOfNextWeek.format('YYYY-MM-DD')}`;
+
+        scheduleKeyboardButtons.push([
+          InlineKeyboard.text(buttonText, buttonData),
+        ]);
+      }
+
+      const scheduleKeyboard = InlineKeyboard.from(scheduleKeyboardButtons);
+
+      await ctx.reply(scheduleText, { reply_markup: scheduleKeyboard });
+    });
   }
 
   onProfileText() {
