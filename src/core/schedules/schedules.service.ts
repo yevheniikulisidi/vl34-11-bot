@@ -100,4 +100,14 @@ export class SchedulesService implements OnModuleInit {
 
     return JSON.parse(data);
   }
+
+  async updatedAt(_class: '11a' | '11b') {
+    const data = await this.redis.get(`${_class}:updated-at`);
+
+    if (!data) {
+      return null;
+    }
+
+    return data;
+  }
 }

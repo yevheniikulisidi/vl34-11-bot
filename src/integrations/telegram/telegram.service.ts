@@ -37,6 +37,7 @@ export class TelegramService implements OnModuleInit {
     // Callback queries
     this.onModifyUserClassCallbackQuery();
     this.onSetOrChangeUserClassCallbackQuery();
+    this.onScheduleCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -89,7 +90,24 @@ export class TelegramService implements OnModuleInit {
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
-        await ctx.reply('Створи профіль за допомогою команди /start');
+        const mainKeyboard = this.getMainKeyboard();
+
+        await ctx.reply('Створи профіль за допомогою команди /start', {
+          reply_markup: mainKeyboard,
+        });
+
+        return;
+      }
+
+      if (!user.class) {
+        const classesText = 'Спочатку обери свій клас:';
+        const classesKeyboard = new InlineKeyboard()
+          .text('11-А', 'set-user-class:11a')
+          .row()
+          .text('11-Б', 'set-user-class:11b');
+
+        await ctx.reply(classesText, { reply_markup: classesKeyboard });
+
         return;
       }
 
@@ -171,6 +189,154 @@ export class TelegramService implements OnModuleInit {
     });
   }
 
+  onScheduleCallbackQuery() {
+    this.bot.callbackQuery(
+      /^schedule:([0-9]{4}-[0-9]{2}-[0-9]{2})$/,
+      async (ctx) => {
+        if (!ctx.from) return;
+
+        const userId = ctx.from.id;
+        const user = await this.usersRepository.findUser(userId);
+
+        if (!user) {
+          const mainKeyboard = this.getMainKeyboard();
+
+          await ctx.reply('Створи профіль за допомогою команди /start', {
+            reply_markup: mainKeyboard,
+          });
+
+          return;
+        }
+
+        if (!user.class) {
+          const classesText = 'Спочатку обери свій клас:';
+          const classesKeyboard = new InlineKeyboard()
+            .text('11-А', 'set-user-class:11a')
+            .row()
+            .text('11-Б', 'set-user-class:11b');
+
+          await ctx.reply(classesText, { reply_markup: classesKeyboard });
+
+          return;
+        }
+
+        const scheduleDate = ctx.match[1];
+        const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+        const schedule = await this.schedulesService.getSchedule(
+          userClass,
+          scheduleDate,
+        );
+
+        const dayDate = dayjs(scheduleDate)
+          .tz('Europe/Kyiv')
+          .locale('uk', { weekStart: 1 });
+
+        if (schedule.length === 0) {
+          const dayNumber = dayjs(scheduleDate).day();
+          const dayName = [
+            'неділю',
+            'понеділок',
+            'вівторок',
+            'середу',
+            'четвер',
+            "п'ятницю",
+            'суботу',
+          ][dayNumber];
+
+          const noScheduleText = `Розклад на ${dayName} (${dayDate.format(
+            'DD.MM.YYYY',
+          )}) порожній.`;
+
+          await ctx.editMessageText(noScheduleText);
+          await ctx.answerCallbackQuery();
+
+          return;
+        }
+
+        const dayNumber2 = dayjs(scheduleDate).day();
+        const dayName2 = [
+          'Неділя',
+          'Понеділок',
+          'Вівторок',
+          'Середа',
+          'Четвер',
+          "П'ятниця",
+          'Субота',
+        ][dayNumber2];
+
+        const dayText = `${
+          dayDate.isToday()
+            ? `${dayName2} (сьогодні)`
+            : `${dayName2} (${dayDate.format('DD.MM.YYYY')})`
+        }`;
+        const lessonsText = schedule
+          .map((lesson) => {
+            const isNow = dayjs().isBetween(
+              dayjs(lesson.startTime, 'HH:mm'),
+              dayjs(lesson.endTime, 'HH:mm'),
+              null,
+              '[]',
+            );
+
+            const formattedStartTime = dayjs
+              .utc(lesson.startTime, 'HH:mm')
+              .tz('Europe/Kyiv')
+              .locale('uk')
+              .format('H:mm');
+            const formattedEndTime = dayjs
+              .utc(lesson.endTime, 'HH:mm')
+              .tz('Europe/Kyiv')
+              .format('H:mm');
+
+            let formattedLesson = '';
+
+            if (isNow) {
+              formattedLesson = `<b>${lesson.number}. ${lesson.subjects
+                .map(
+                  (lessonSubject) =>
+                    `${
+                      lessonSubject.meetingUrl
+                        ? `<a href="${lessonSubject.meetingUrl}">${lessonSubject.name}</a>`
+                        : lessonSubject.name
+                    } <i>(${formattedStartTime} - ${formattedEndTime})</i>`,
+                )
+                .join('\n     ')}</b>`;
+            } else {
+              formattedLesson = `${lesson.number}. ${lesson.subjects
+                .map(
+                  (lessonSubject) =>
+                    `${
+                      lessonSubject.meetingUrl
+                        ? `<a href="${lessonSubject.meetingUrl}">${lessonSubject.name}</a>`
+                        : lessonSubject.name
+                    } <i>(${formattedStartTime} - ${formattedEndTime})</i>`,
+                )
+                .join('\n    ')}`;
+            }
+
+            return formattedLesson;
+          })
+          .join('\n');
+
+        const updatedAt = await this.schedulesService.updatedAt(userClass);
+
+        const now = dayjs().utc();
+        const nzProblemsText =
+          updatedAt && now.diff(dayjs(updatedAt), 'minute') >= 10
+            ? `<b>⚠️ Увага! Проблеми з НЗ!</b>`
+            : '';
+
+        const scheduleText = `<b>${dayText}</b>\n${lessonsText}\n\n${nzProblemsText}`;
+
+        await ctx.editMessageText(scheduleText, {
+          link_preview_options: { is_disabled: true },
+          parse_mode: 'HTML',
+        });
+        await ctx.answerCallbackQuery();
+      },
+    );
+  }
+
   onProfileText() {
     this.bot.hears('👤 Профіль', async (ctx) => {
       if (!ctx.from) return;
@@ -179,7 +345,12 @@ export class TelegramService implements OnModuleInit {
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
-        await ctx.reply('Створи профіль за допомогою команди /start');
+        const mainKeyboard = this.getMainKeyboard();
+
+        await ctx.reply('Створи профіль за допомогою команди /start', {
+          reply_markup: mainKeyboard,
+        });
+
         return;
       }
 
@@ -219,7 +390,12 @@ export class TelegramService implements OnModuleInit {
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
-        await ctx.reply('Створи профіль за допомогою команди /start');
+        const mainKeyboard = this.getMainKeyboard();
+
+        await ctx.reply('Створи профіль за допомогою команди /start', {
+          reply_markup: mainKeyboard,
+        });
+
         return;
       }
 
@@ -247,7 +423,12 @@ export class TelegramService implements OnModuleInit {
         const user = await this.usersRepository.findUser(userId);
 
         if (!user) {
-          await ctx.reply('Створи профіль за допомогою команди /start');
+          const mainKeyboard = this.getMainKeyboard();
+
+          await ctx.reply('Створи профіль за допомогою команди /start', {
+            reply_markup: mainKeyboard,
+          });
+
           return;
         }
 
