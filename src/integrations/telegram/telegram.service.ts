@@ -278,12 +278,14 @@ export class TelegramService implements OnModuleInit {
               '[]',
             );
 
-            const formattedStartTime = dayjs(lesson.startTime, 'HH:mm').format(
-              'H:mm',
-            );
-            const formattedEndTime = dayjs(lesson.endTime, 'HH:mm').format(
-              'H:mm',
-            );
+            const formattedStartTime = dayjs
+              .utc(lesson.startTime, 'HH:mm')
+              .tz('Europe/Kyiv')
+              .format('H:mm');
+            const formattedEndTime = dayjs
+              .utc(lesson.endTime, 'HH:mm')
+              .tz('Europe/Kyiv')
+              .format('H:mm');
 
             let formattedLesson = '';
 
