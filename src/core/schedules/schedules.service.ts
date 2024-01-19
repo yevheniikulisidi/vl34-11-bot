@@ -61,11 +61,7 @@ export class SchedulesService implements OnModuleInit {
   }
 
   private formatTime(time: string): string {
-    return dayjs(time, 'HH:mm')
-      .tz('Europe/Kyiv')
-      .utc()
-      .format('HH:mm')
-      .toString();
+    return dayjs.tz(time, 'HH:mm', 'Europe/Kyiv').utc().format('HH:mm');
   }
 
   private findDiaryCall(
