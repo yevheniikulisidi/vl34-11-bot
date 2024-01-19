@@ -20,4 +20,12 @@ export class UsersRepository {
   ) {
     return await this.prisma.user.update({ data, where: { id } });
   }
+
+  async countClassesUsers() {
+    return this.prisma.$transaction([
+      this.prisma.user.count({ where: { class: 'CLASS_11A' } }),
+      this.prisma.user.count({ where: { class: 'CLASS_11B' } }),
+      this.prisma.user.count(),
+    ]);
+  }
 }

@@ -10,6 +10,7 @@ import { UsersRepository } from 'src/core/users/repositories/users.repository';
 export class TelegramService implements OnModuleInit {
   private readonly logger = new Logger(TelegramService.name);
   private readonly bot: Bot;
+  private readonly superAdminId: number;
 
   constructor(
     private readonly configService: ConfigService,
@@ -24,6 +25,10 @@ export class TelegramService implements OnModuleInit {
         environment: clientEnvironment === 'production' ? 'prod' : 'test',
       },
     });
+
+    this.superAdminId = +configService.getOrThrow<number>(
+      'TELEGRAM_SUPER_ADMIN_ID',
+    );
   }
 
   onModuleInit() {
@@ -33,6 +38,7 @@ export class TelegramService implements OnModuleInit {
     // Texts
     this.onProfileText();
     this.onScheduleText();
+    this.onStatisticsText();
 
     // Callback queries
     this.onModifyUserClassCallbackQuery();
@@ -61,15 +67,16 @@ export class TelegramService implements OnModuleInit {
 
   onStartCommand() {
     this.bot.command('start', async (ctx) => {
-      const welcomeText =
-        'Привіт! Тут для тебе: розклад, конференції — все швидко та легко! 🚀';
-      const mainKeyboard = this.getMainKeyboard();
-
-      await ctx.reply(welcomeText, { reply_markup: mainKeyboard });
-
       if (!ctx.from) return;
 
       const userId = ctx.from.id;
+
+      const welcomeText =
+        'Привіт! Тут для тебе: розклад, конференції — все швидко та легко! 🚀';
+      const mainKeyboard = this.getMainKeyboard(userId);
+
+      await ctx.reply(welcomeText, { reply_markup: mainKeyboard });
+
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
@@ -78,8 +85,18 @@ export class TelegramService implements OnModuleInit {
     });
   }
 
-  getMainKeyboard() {
-    return new Keyboard().text('📅 Розклад').text('👤 Профіль').resized();
+  getMainKeyboard(userId: number | bigint) {
+    const keyboard = new Keyboard()
+      .text('📅 Розклад')
+      .text('👤 Профіль')
+      .row()
+      .resized();
+
+    if (this.superAdminId === userId) {
+      keyboard.text('📊 Статистика');
+    }
+
+    return keyboard;
   }
 
   onScheduleText() {
@@ -90,7 +107,7 @@ export class TelegramService implements OnModuleInit {
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
-        const mainKeyboard = this.getMainKeyboard();
+        const mainKeyboard = this.getMainKeyboard(userId);
 
         await ctx.reply('Створи профіль за допомогою команди /start', {
           reply_markup: mainKeyboard,
@@ -199,7 +216,7 @@ export class TelegramService implements OnModuleInit {
         const user = await this.usersRepository.findUser(userId);
 
         if (!user) {
-          const mainKeyboard = this.getMainKeyboard();
+          const mainKeyboard = this.getMainKeyboard(userId);
 
           await ctx.reply('Створи профіль за допомогою команди /start', {
             reply_markup: mainKeyboard,
@@ -344,7 +361,7 @@ export class TelegramService implements OnModuleInit {
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
-        const mainKeyboard = this.getMainKeyboard();
+        const mainKeyboard = this.getMainKeyboard(userId);
 
         await ctx.reply('Створи профіль за допомогою команди /start', {
           reply_markup: mainKeyboard,
@@ -389,7 +406,7 @@ export class TelegramService implements OnModuleInit {
       const user = await this.usersRepository.findUser(userId);
 
       if (!user) {
-        const mainKeyboard = this.getMainKeyboard();
+        const mainKeyboard = this.getMainKeyboard(userId);
 
         await ctx.reply('Створи профіль за допомогою команди /start', {
           reply_markup: mainKeyboard,
@@ -422,7 +439,7 @@ export class TelegramService implements OnModuleInit {
         const user = await this.usersRepository.findUser(userId);
 
         if (!user) {
-          const mainKeyboard = this.getMainKeyboard();
+          const mainKeyboard = this.getMainKeyboard(userId);
 
           await ctx.reply('Створи профіль за допомогою команди /start', {
             reply_markup: mainKeyboard,
@@ -447,5 +464,28 @@ export class TelegramService implements OnModuleInit {
         await ctx.answerCallbackQuery();
       },
     );
+  }
+
+  onStatisticsText() {
+    this.bot.hears('📊 Статистика', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const [class11aUsersCount, class11bUsersCount, classesUsersCount] =
+        await this.usersRepository.countClassesUsers();
+
+      const statisticsText =
+        '<b>Статистика</b>' +
+        `\n11-А: <code>${class11aUsersCount}</code>` +
+        `\n11-Б: <code>${class11bUsersCount}</code>` +
+        `\nЗагалом: <code>${classesUsersCount}</code>`;
+
+      await ctx.reply(statisticsText, { parse_mode: 'HTML' });
+    });
   }
 }
