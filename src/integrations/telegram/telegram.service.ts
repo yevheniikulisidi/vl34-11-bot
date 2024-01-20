@@ -289,8 +289,8 @@ export class TelegramService implements OnModuleInit {
         const lessonsText = schedule
           .map((lesson) => {
             const isNow = dayjs().isBetween(
-              dayjs(`${scheduleDate} ${lesson.startTime}`),
-              dayjs(`${scheduleDate} ${lesson.endTime}`),
+              dayjs(`${scheduleDate} ${lesson.startTime}`, 'YYYY-MM-DD HH:mm'),
+              dayjs(`${scheduleDate} ${lesson.endTime}`, 'YYYY-MM-DD HH:mm'),
               null,
               '[]',
             );
