@@ -18,3 +18,16 @@ enum Class {
   CLASS_11A
   CLASS_11B
 }
+
+model Analytics {
+  id            String   @id @default(uuid())
+  scheduleClass Class
+  scheduleDate  DateTime @db.Date
+  count         BigInt   @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([scheduleClass, scheduleDate])
+  @@index([scheduleClass, scheduleDate])
+  @@index([createdAt])
+}

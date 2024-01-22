@@ -25,6 +25,7 @@ export class UsersRepository {
     return this.prisma.$transaction([
       this.prisma.user.count({ where: { class: 'CLASS_11A' } }),
       this.prisma.user.count({ where: { class: 'CLASS_11B' } }),
+      this.prisma.user.count({ where: { class: null } }),
       this.prisma.user.count(),
     ]);
   }
