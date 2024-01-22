@@ -33,13 +33,15 @@ export class AnalyticsRepository {
     const thisMonthStart = now.startOf('month');
 
     return await this.prisma.$transaction([
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           scheduleClass: 'CLASS_11A',
           createdAt: { gte: today.toDate(), lte: today.endOf('day').toDate() },
         },
       }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           scheduleClass: 'CLASS_11A',
           createdAt: {
@@ -48,7 +50,8 @@ export class AnalyticsRepository {
           },
         },
       }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           scheduleClass: 'CLASS_11A',
           createdAt: {
@@ -57,14 +60,19 @@ export class AnalyticsRepository {
           },
         },
       }),
-      this.prisma.analytics.count({ where: { scheduleClass: 'CLASS_11A' } }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
+        where: { scheduleClass: 'CLASS_11A' },
+      }),
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           scheduleClass: 'CLASS_11B',
           createdAt: { gte: today.toDate(), lte: today.endOf('day').toDate() },
         },
       }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           scheduleClass: 'CLASS_11B',
           createdAt: {
@@ -73,7 +81,8 @@ export class AnalyticsRepository {
           },
         },
       }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           scheduleClass: 'CLASS_11B',
           createdAt: {
@@ -82,13 +91,18 @@ export class AnalyticsRepository {
           },
         },
       }),
-      this.prisma.analytics.count({ where: { scheduleClass: 'CLASS_11B' } }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
+        where: { scheduleClass: 'CLASS_11B' },
+      }),
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           createdAt: { gte: today.toDate(), lte: today.endOf('day').toDate() },
         },
       }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           createdAt: {
             gte: thisWeekStart.toDate(),
@@ -96,7 +110,8 @@ export class AnalyticsRepository {
           },
         },
       }),
-      this.prisma.analytics.count({
+      this.prisma.analytics.aggregate({
+        _sum: { count: true },
         where: {
           createdAt: {
             gte: thisMonthStart.toDate(),
@@ -104,7 +119,7 @@ export class AnalyticsRepository {
           },
         },
       }),
-      this.prisma.analytics.count(),
+      this.prisma.analytics.aggregate({ _sum: { count: true } }),
     ]);
   }
 }
