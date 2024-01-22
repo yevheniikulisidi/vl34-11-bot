@@ -548,50 +548,50 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      const [
-        class11aTodayAnalyticsCount,
-        class11aThisWeekAnalyticsCount,
-        class11aThisMonthAnalyticsCount,
-        class11aOverallAnalyticsCount,
-        class11bTodayAnalyticsCount,
-        class11bThisWeekAnalyticsCount,
-        class11bThisMonthAnalyticsCount,
-        class11bOverallAnalyticsCount,
-        overallTodayAnalyticsCount,
-        overallThisWeekAnalyticsCount,
-        overallThisMonthAnalyticsCount,
-        overallOverallAnalyticsCount,
-      ] = await this.analyticsRepository.countAnalytics();
+      const analyticsData = await this.analyticsRepository.countAnalytics();
 
-      const class11aAnalyticsText =
-        `${class11aTodayAnalyticsCount}` +
-        '/' +
-        `${class11aThisWeekAnalyticsCount}` +
-        '/' +
-        `${class11aThisMonthAnalyticsCount}` +
-        '/' +
-        `${class11aOverallAnalyticsCount}`;
-      const class11bAnalyticsText =
-        `${class11bTodayAnalyticsCount}` +
-        '/' +
-        `${class11bThisWeekAnalyticsCount}` +
-        '/' +
-        `${class11bThisMonthAnalyticsCount}` +
-        '/' +
-        `${class11bOverallAnalyticsCount}`;
-      const overallAnalyticsText =
-        `${overallTodayAnalyticsCount}` +
-        '/' +
-        `${overallThisWeekAnalyticsCount}` +
-        '/' +
-        `${overallThisMonthAnalyticsCount}` +
-        '/' +
-        `${overallOverallAnalyticsCount}`;
+      const formatAnalyticsText = (
+        label: string,
+        today: bigint | null,
+        thisWeek: bigint | null,
+        thisMonth: bigint | null,
+        overall: bigint | null,
+      ) =>
+        `${label}: <code>${today !== null ? today : 0}/${
+          thisWeek !== null ? thisWeek : 0
+        }/${thisMonth !== null ? thisMonth : 0}/${
+          overall !== null ? overall : 0
+        }</code>`;
+
+      const class11aAnalyticsText = formatAnalyticsText(
+        '11-А',
+        analyticsData[0]._sum.count,
+        analyticsData[1]._sum.count,
+        analyticsData[2]._sum.count,
+        analyticsData[3]._sum.count,
+      );
+
+      const class11bAnalyticsText = formatAnalyticsText(
+        '11-Б',
+        analyticsData[4]._sum.count,
+        analyticsData[5]._sum.count,
+        analyticsData[6]._sum.count,
+        analyticsData[7]._sum.count,
+      );
+
+      const overallAnalyticsText = formatAnalyticsText(
+        'Загалом',
+        analyticsData[8]._sum.count,
+        analyticsData[9]._sum.count,
+        analyticsData[10]._sum.count,
+        analyticsData[11]._sum.count,
+      );
+
       const analyticsText =
         '<b>Аналітика</b>' +
-        `\n11-А: <code>${class11aAnalyticsText}</code>` +
-        `\n11-Б: <code>${class11bAnalyticsText}</code>` +
-        `\nЗагалом: <code>${overallAnalyticsText}</code>`;
+        `\n${class11aAnalyticsText}` +
+        `\n${class11bAnalyticsText}` +
+        `\n${overallAnalyticsText}`;
 
       await ctx.editMessageText(analyticsText, { parse_mode: 'HTML' });
       await ctx.answerCallbackQuery();
