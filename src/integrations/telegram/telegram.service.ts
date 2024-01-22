@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Class } from '@prisma/client';
 import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
+import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 
@@ -16,6 +17,7 @@ export class TelegramService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly usersRepository: UsersRepository,
     private readonly schedulesService: SchedulesService,
+    private readonly analyticsRepository: AnalyticsRepository,
   ) {
     const token = this.configService.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
     const clientEnvironment = this.configService.getOrThrow<string>('NODE_ENV');
@@ -38,12 +40,14 @@ export class TelegramService implements OnModuleInit {
     // Texts
     this.onProfileText();
     this.onScheduleText();
-    this.onStatisticsText();
+    this.onAdminText();
 
     // Callback queries
     this.onModifyUserClassCallbackQuery();
     this.onSetOrChangeUserClassCallbackQuery();
     this.onScheduleCallbackQuery();
+    this.onAdminUsersCallbackQuery();
+    this.onAdminAnalyticsCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -93,7 +97,7 @@ export class TelegramService implements OnModuleInit {
       .resized();
 
     if (this.superAdminId === userId) {
-      keyboard.text('📊 Статистика');
+      keyboard.text('🔧 Адміністратор');
     }
 
     return keyboard;
@@ -351,6 +355,24 @@ export class TelegramService implements OnModuleInit {
           parse_mode: 'HTML',
         });
         await ctx.answerCallbackQuery();
+
+        const analyticsScheduleDate = dayjs.utc(scheduleDate).toISOString();
+        const analytics = await this.analyticsRepository.findAnalytics(
+          user.class,
+          analyticsScheduleDate,
+        );
+
+        if (!analytics) {
+          await this.analyticsRepository.createAnalytics(
+            user.class,
+            analyticsScheduleDate,
+          );
+        } else {
+          await this.analyticsRepository.updateAnalytics(
+            user.class,
+            analyticsScheduleDate,
+          );
+        }
       },
     );
   }
@@ -468,8 +490,8 @@ export class TelegramService implements OnModuleInit {
     );
   }
 
-  onStatisticsText() {
-    this.bot.hears('📊 Статистика', async (ctx) => {
+  onAdminText() {
+    this.bot.hears('🔧 Адміністратор', async (ctx) => {
       if (!ctx.from) return;
 
       const userId = ctx.from.id;
@@ -478,16 +500,101 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      const [class11aUsersCount, class11bUsersCount, classesUsersCount] =
-        await this.usersRepository.countClassesUsers();
+      const adminKeyboard = new InlineKeyboard()
+        .text('👥 Користувачі', 'admin:users')
+        .row()
+        .text('📊 Аналітика', 'admin:analytics');
 
-      const statisticsText =
-        '<b>Статистика</b>' +
+      await ctx.reply('Обери розділ:', { reply_markup: adminKeyboard });
+    });
+  }
+
+  onAdminUsersCallbackQuery() {
+    this.bot.callbackQuery('admin:users', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const [
+        class11aUsersCount,
+        class11bUsersCount,
+        noClassUsersCount,
+        classesUsersCount,
+      ] = await this.usersRepository.countClassesUsers();
+
+      const usersText =
+        '<b>Користувачі</b>' +
         `\n11-А: <code>${class11aUsersCount}</code>` +
         `\n11-Б: <code>${class11bUsersCount}</code>` +
+        `\nБез класу: <code>${noClassUsersCount}</code>` +
         `\nЗагалом: <code>${classesUsersCount}</code>`;
 
-      await ctx.reply(statisticsText, { parse_mode: 'HTML' });
+      await ctx.editMessageText(usersText, { parse_mode: 'HTML' });
+      await ctx.answerCallbackQuery();
+    });
+  }
+
+  onAdminAnalyticsCallbackQuery() {
+    this.bot.callbackQuery('admin:analytics', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const [
+        class11aTodayAnalyticsCount,
+        class11aThisWeekAnalyticsCount,
+        class11aThisMonthAnalyticsCount,
+        class11aOverallAnalyticsCount,
+        class11bTodayAnalyticsCount,
+        class11bThisWeekAnalyticsCount,
+        class11bThisMonthAnalyticsCount,
+        class11bOverallAnalyticsCount,
+        overallTodayAnalyticsCount,
+        overallThisWeekAnalyticsCount,
+        overallThisMonthAnalyticsCount,
+        overallOverallAnalyticsCount,
+      ] = await this.analyticsRepository.countAnalytics();
+
+      const class11aAnalyticsText =
+        `${class11aTodayAnalyticsCount}` +
+        '/' +
+        `${class11aThisWeekAnalyticsCount}` +
+        '/' +
+        `${class11aThisMonthAnalyticsCount}` +
+        '/' +
+        `${class11aOverallAnalyticsCount}`;
+      const class11bAnalyticsText =
+        `${class11bTodayAnalyticsCount}` +
+        '/' +
+        `${class11bThisWeekAnalyticsCount}` +
+        '/' +
+        `${class11bThisMonthAnalyticsCount}` +
+        '/' +
+        `${class11bOverallAnalyticsCount}`;
+      const overallAnalyticsText =
+        `${overallTodayAnalyticsCount}` +
+        '/' +
+        `${overallThisWeekAnalyticsCount}` +
+        '/' +
+        `${overallThisMonthAnalyticsCount}` +
+        '/' +
+        `${overallOverallAnalyticsCount}`;
+      const analyticsText =
+        '<b>Аналітика</b>' +
+        `\n11-А: <code>${class11aAnalyticsText}</code>` +
+        `\n11-Б: <code>${class11bAnalyticsText}</code>` +
+        `\nЗагалом: <code>${overallAnalyticsText}</code>`;
+
+      await ctx.editMessageText(analyticsText, { parse_mode: 'HTML' });
+      await ctx.answerCallbackQuery();
     });
   }
 }
