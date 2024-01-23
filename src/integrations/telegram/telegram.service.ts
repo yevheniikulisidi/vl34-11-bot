@@ -548,50 +548,23 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      const analyticsData = await this.analyticsRepository.countAnalytics();
-
-      const formatAnalyticsText = (
-        label: string,
-        today: bigint | null,
-        thisWeek: bigint | null,
-        thisMonth: bigint | null,
-        overall: bigint | null,
-      ) =>
-        `${label}: <code>${today !== null ? today : 0}/${
-          thisWeek !== null ? thisWeek : 0
-        }/${thisMonth !== null ? thisMonth : 0}/${
-          overall !== null ? overall : 0
-        }</code>`;
-
-      const class11aAnalyticsText = formatAnalyticsText(
-        '11-А',
-        analyticsData[0]._sum.count,
-        analyticsData[1]._sum.count,
-        analyticsData[2]._sum.count,
-        analyticsData[3]._sum.count,
-      );
-
-      const class11bAnalyticsText = formatAnalyticsText(
-        '11-Б',
-        analyticsData[4]._sum.count,
-        analyticsData[5]._sum.count,
-        analyticsData[6]._sum.count,
-        analyticsData[7]._sum.count,
-      );
-
-      const overallAnalyticsText = formatAnalyticsText(
-        'Загалом',
-        analyticsData[8]._sum.count,
-        analyticsData[9]._sum.count,
-        analyticsData[10]._sum.count,
-        analyticsData[11]._sum.count,
-      );
+      const [
+        {
+          _sum: { count: class11aAnalyticsCount },
+        },
+        {
+          _sum: { count: class11bAnalyticsCount },
+        },
+        {
+          _sum: { count: overallAnalyticsCount },
+        },
+      ] = await this.analyticsRepository.countAnalytics();
 
       const analyticsText =
         '<b>Аналітика</b>' +
-        `\n${class11aAnalyticsText}` +
-        `\n${class11bAnalyticsText}` +
-        `\n${overallAnalyticsText}`;
+        `\n11-А: <code>${class11aAnalyticsCount}</code>` +
+        `\n11-Б: <code>${class11bAnalyticsCount}</code>` +
+        `\nЗагалом: <code>${overallAnalyticsCount}</code>`;
 
       await ctx.editMessageText(analyticsText, { parse_mode: 'HTML' });
       await ctx.answerCallbackQuery();
