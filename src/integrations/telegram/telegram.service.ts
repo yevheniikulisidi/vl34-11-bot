@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
 import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
+import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class TelegramService implements OnModuleInit {
     private readonly usersRepository: UsersRepository,
     private readonly schedulesService: SchedulesService,
     private readonly analyticsRepository: AnalyticsRepository,
+    private readonly settingsRepository: SettingsRepository,
   ) {
     const token = this.configService.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
     const clientEnvironment = this.configService.getOrThrow<string>('NODE_ENV');
@@ -48,6 +50,7 @@ export class TelegramService implements OnModuleInit {
     this.onScheduleCallbackQuery();
     this.onAdminUsersCallbackQuery();
     this.onAdminAnalyticsCallbackQuery();
+    this.onAdminDistanceEducationCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -500,10 +503,19 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
+      const settings = await this.settingsRepository.findSettings();
+      const { isDistanceEducation } =
+        settings || (await this.settingsRepository.createSettings());
+
+      const distanceEducationIndicator = isDistanceEducation ? '✅' : '❌';
+      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
+
       const adminKeyboard = new InlineKeyboard()
         .text('👥 Користувачі', 'admin:users')
         .row()
-        .text('📊 Аналітика', 'admin:analytics');
+        .text('📊 Аналітика', 'admin:analytics')
+        .row()
+        .text(distanceEducationText, 'admin:distance-education');
 
       await ctx.reply('Обери розділ:', { reply_markup: adminKeyboard });
     });
@@ -567,6 +579,42 @@ export class TelegramService implements OnModuleInit {
         `\nЗагалом: <code>${overallAnalyticsCount}</code>`;
 
       await ctx.editMessageText(analyticsText, { parse_mode: 'HTML' });
+      await ctx.answerCallbackQuery();
+    });
+  }
+
+  onAdminDistanceEducationCallbackQuery() {
+    this.bot.callbackQuery('admin:distance-education', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const settings = await this.settingsRepository.findSettings();
+      const { id: settingsId, isDistanceEducation } =
+        settings || (await this.settingsRepository.createSettings());
+
+      const { isDistanceEducation: updatedIsDistanceEducation } =
+        await this.settingsRepository.updateSettings(settingsId, {
+          isDistanceEducation: !isDistanceEducation,
+        });
+
+      const distanceEducationIndicator = updatedIsDistanceEducation
+        ? '✅'
+        : '❌';
+      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
+
+      const adminKeyboard = new InlineKeyboard()
+        .text('👥 Користувачі', 'admin:users')
+        .row()
+        .text('📊 Аналітика', 'admin:analytics')
+        .row()
+        .text(distanceEducationText, 'admin:distance-education');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
       await ctx.answerCallbackQuery();
     });
   }
