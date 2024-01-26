@@ -51,6 +51,7 @@ export class TelegramService implements OnModuleInit {
     this.onAdminUsersCallbackQuery();
     this.onAdminAnalyticsCallbackQuery();
     this.onAdminDistanceEducationCallbackQuery();
+    this.onProfileLessonUpdatesCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -413,10 +414,16 @@ export class TelegramService implements OnModuleInit {
       const modifyUserClassData = user.class
         ? 'change-user-class'
         : 'set-user-class';
-      const profileKeyboard = new InlineKeyboard().text(
-        modifyUserClassText,
-        modifyUserClassData,
-      );
+
+      const lessonUpdatesIndicator = user.isNotifyingLessonUpdates
+        ? '✅'
+        : '❌';
+      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
+
+      const profileKeyboard = new InlineKeyboard()
+        .text(modifyUserClassText, modifyUserClassData)
+        .row()
+        .text(lessonUpdatesText, 'profile:lesson-updates');
 
       await ctx.reply(profileText, {
         parse_mode: 'HTML',
@@ -615,6 +622,48 @@ export class TelegramService implements OnModuleInit {
         .text(distanceEducationText, 'admin:distance-education');
 
       await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
+      await ctx.answerCallbackQuery();
+    });
+  }
+
+  onProfileLessonUpdatesCallbackQuery() {
+    this.bot.callbackQuery('profile:lesson-updates', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+      const user = await this.usersRepository.findUser(userId);
+
+      if (!user) {
+        const mainKeyboard = this.getMainKeyboard(userId);
+
+        await ctx.reply('Створи профіль за допомогою команди /start', {
+          reply_markup: mainKeyboard,
+        });
+
+        return;
+      }
+
+      const { isNotifyingLessonUpdates } =
+        await this.usersRepository.updateUser(userId, {
+          isNotifyingLessonUpdates: !user.isNotifyingLessonUpdates,
+        });
+
+      const modifyUserClassText = user.class
+        ? 'Змінити клас'
+        : 'Встановити клас';
+      const modifyUserClassData = user.class
+        ? 'change-user-class'
+        : 'set-user-class';
+
+      const lessonUpdatesIndicator = isNotifyingLessonUpdates ? '✅' : '❌';
+      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
+
+      const profileKeyboard = new InlineKeyboard()
+        .text(modifyUserClassText, modifyUserClassData)
+        .row()
+        .text(lessonUpdatesText, 'profile:lesson-updates');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
       await ctx.answerCallbackQuery();
     });
   }
