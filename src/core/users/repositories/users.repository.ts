@@ -29,4 +29,8 @@ export class UsersRepository {
       this.prisma.user.count(),
     ]);
   }
+
+  async findUsersWithId() {
+    return await this.prisma.user.findMany({ select: { id: true } });
+  }
 }

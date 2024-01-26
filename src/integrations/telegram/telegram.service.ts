@@ -1,6 +1,8 @@
+import { InjectQueue } from '@nestjs/bull';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Class } from '@prisma/client';
+import { Queue } from 'bull';
 import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
 import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
@@ -15,6 +17,8 @@ export class TelegramService implements OnModuleInit {
   private readonly superAdminId: number;
 
   constructor(
+    @InjectQueue('message-distribution')
+    private readonly messageDistributionQueue: Queue,
     private readonly configService: ConfigService,
     private readonly usersRepository: UsersRepository,
     private readonly schedulesService: SchedulesService,
@@ -38,6 +42,7 @@ export class TelegramService implements OnModuleInit {
   onModuleInit() {
     // Commands
     this.onStartCommand();
+    this.onUpdateCommand();
 
     // Texts
     this.onProfileText();
@@ -666,5 +671,45 @@ export class TelegramService implements OnModuleInit {
       await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
       await ctx.answerCallbackQuery();
     });
+  }
+
+  onUpdateCommand() {
+    this.bot.command('update', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const users = await this.usersRepository.findUsersWithId();
+
+      await this.messageDistributionQueue.addBulk(
+        users.map((user) => ({
+          data: { userId: user.id.toString() },
+          name: 'update',
+        })),
+      );
+
+      await ctx.reply('Розсилка успішна ✅');
+    });
+  }
+
+  async sendMessage(userId: string, text: string) {
+    try {
+      const mainKeyboard = this.getMainKeyboard(Number(userId));
+
+      await this.bot.api.sendMessage(userId, text, {
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard,
+      });
+    } catch (error) {
+      if (error instanceof GrammyError) {
+        if (error.error_code === 403) {
+          return;
+        }
+      }
+    }
   }
 }
