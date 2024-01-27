@@ -1,10 +1,13 @@
+import { InjectQueue } from '@nestjs/bull';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Class } from '@prisma/client';
+import { Queue } from 'bull';
 import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
 import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
+import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 
 @Injectable()
@@ -14,10 +17,13 @@ export class TelegramService implements OnModuleInit {
   private readonly superAdminId: number;
 
   constructor(
+    @InjectQueue('message-distribution')
+    private readonly messageDistributionQueue: Queue,
     private readonly configService: ConfigService,
     private readonly usersRepository: UsersRepository,
     private readonly schedulesService: SchedulesService,
     private readonly analyticsRepository: AnalyticsRepository,
+    private readonly settingsRepository: SettingsRepository,
   ) {
     const token = this.configService.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
     const clientEnvironment = this.configService.getOrThrow<string>('NODE_ENV');
@@ -36,6 +42,7 @@ export class TelegramService implements OnModuleInit {
   onModuleInit() {
     // Commands
     this.onStartCommand();
+    this.onUpdateCommand();
 
     // Texts
     this.onProfileText();
@@ -48,6 +55,8 @@ export class TelegramService implements OnModuleInit {
     this.onScheduleCallbackQuery();
     this.onAdminUsersCallbackQuery();
     this.onAdminAnalyticsCallbackQuery();
+    this.onAdminDistanceEducationCallbackQuery();
+    this.onProfileLessonUpdatesCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -410,10 +419,16 @@ export class TelegramService implements OnModuleInit {
       const modifyUserClassData = user.class
         ? 'change-user-class'
         : 'set-user-class';
-      const profileKeyboard = new InlineKeyboard().text(
-        modifyUserClassText,
-        modifyUserClassData,
-      );
+
+      const lessonUpdatesIndicator = user.isNotifyingLessonUpdates
+        ? '✅'
+        : '❌';
+      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
+
+      const profileKeyboard = new InlineKeyboard()
+        .text(modifyUserClassText, modifyUserClassData)
+        .row()
+        .text(lessonUpdatesText, 'profile:lesson-updates');
 
       await ctx.reply(profileText, {
         parse_mode: 'HTML',
@@ -500,10 +515,19 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
+      const settings = await this.settingsRepository.findSettings();
+      const { isDistanceEducation } =
+        settings || (await this.settingsRepository.createSettings());
+
+      const distanceEducationIndicator = isDistanceEducation ? '✅' : '❌';
+      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
+
       const adminKeyboard = new InlineKeyboard()
         .text('👥 Користувачі', 'admin:users')
         .row()
-        .text('📊 Аналітика', 'admin:analytics');
+        .text('📊 Аналітика', 'admin:analytics')
+        .row()
+        .text(distanceEducationText, 'admin:distance-education');
 
       await ctx.reply('Обери розділ:', { reply_markup: adminKeyboard });
     });
@@ -569,5 +593,147 @@ export class TelegramService implements OnModuleInit {
       await ctx.editMessageText(analyticsText, { parse_mode: 'HTML' });
       await ctx.answerCallbackQuery();
     });
+  }
+
+  onAdminDistanceEducationCallbackQuery() {
+    this.bot.callbackQuery('admin:distance-education', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const settings = await this.settingsRepository.findSettings();
+      const { id: settingsId, isDistanceEducation } =
+        settings || (await this.settingsRepository.createSettings());
+
+      const { isDistanceEducation: updatedIsDistanceEducation } =
+        await this.settingsRepository.updateSettings(settingsId, {
+          isDistanceEducation: !isDistanceEducation,
+        });
+
+      const distanceEducationIndicator = updatedIsDistanceEducation
+        ? '✅'
+        : '❌';
+      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
+
+      const adminKeyboard = new InlineKeyboard()
+        .text('👥 Користувачі', 'admin:users')
+        .row()
+        .text('📊 Аналітика', 'admin:analytics')
+        .row()
+        .text(distanceEducationText, 'admin:distance-education');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
+      await ctx.answerCallbackQuery();
+    });
+  }
+
+  onProfileLessonUpdatesCallbackQuery() {
+    this.bot.callbackQuery('profile:lesson-updates', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+      const user = await this.usersRepository.findUser(userId);
+
+      if (!user) {
+        const mainKeyboard = this.getMainKeyboard(userId);
+
+        await ctx.reply('Створи профіль за допомогою команди /start', {
+          reply_markup: mainKeyboard,
+        });
+
+        return;
+      }
+
+      const { isNotifyingLessonUpdates } =
+        await this.usersRepository.updateUser(userId, {
+          isNotifyingLessonUpdates: !user.isNotifyingLessonUpdates,
+        });
+
+      const modifyUserClassText = user.class
+        ? 'Змінити клас'
+        : 'Встановити клас';
+      const modifyUserClassData = user.class
+        ? 'change-user-class'
+        : 'set-user-class';
+
+      const lessonUpdatesIndicator = isNotifyingLessonUpdates ? '✅' : '❌';
+      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
+
+      const profileKeyboard = new InlineKeyboard()
+        .text(modifyUserClassText, modifyUserClassData)
+        .row()
+        .text(lessonUpdatesText, 'profile:lesson-updates');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
+      await ctx.answerCallbackQuery();
+    });
+  }
+
+  onUpdateCommand() {
+    this.bot.command('update', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const users = await this.usersRepository.findUsersWithId();
+
+      await this.messageDistributionQueue.addBulk(
+        users.map((user) => ({
+          data: { userId: user.id.toString() },
+          name: 'update',
+        })),
+      );
+
+      await ctx.reply('Розсилка успішна ✅');
+    });
+  }
+
+  async sendMessage(userId: string, text: string) {
+    try {
+      const mainKeyboard = this.getMainKeyboard(Number(userId));
+
+      await this.bot.api.sendMessage(userId, text, {
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard,
+      });
+    } catch (error) {
+      if (error instanceof GrammyError) {
+        if (error.error_code === 403) {
+          return;
+        }
+      }
+    }
+  }
+
+  getSubjectForm(subjectName: string) {
+    const subjectsForms: Record<string, string> = {
+      алгебра: 'алгебри',
+      'англійська мова': 'англійської мови',
+      астрономія: 'астрономії',
+      біологія: 'біології',
+      географія: 'географії',
+      геометрія: 'геометрії',
+      'захист україни': 'захисту України',
+      інформатика: 'інформатики',
+      'історія україни': 'історії України',
+      фізика: 'фізики',
+      'фізична культура': 'фізичної культури',
+      хімія: 'хімії',
+      технології: 'технологій',
+      'зарубіжна література': 'зарубіжної літератури',
+    };
+
+    const lowercaseSubjectName = subjectName.toLowerCase();
+    const subjectForm = subjectsForms[lowercaseSubjectName];
+
+    return subjectForm || null;
   }
 }
