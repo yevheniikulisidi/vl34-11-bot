@@ -712,4 +712,28 @@ export class TelegramService implements OnModuleInit {
       }
     }
   }
+
+  getSubjectForms(subjectName: string) {
+    const subjectsForms: Record<string, string> = {
+      алгебра: 'алгебри',
+      'англійська мова': 'англійської мови',
+      астрономія: 'астрономії',
+      біологія: 'біології',
+      географія: 'географії',
+      геометрія: 'геометрії',
+      'захист україни': 'захисту України',
+      інформатика: 'інформатики',
+      'історія україни': 'історії України',
+      фізика: 'фізики',
+      'фізична культура': 'фізичної культури',
+      хімія: 'хімії',
+      технології: 'технологій',
+      'зарубіжна література': 'зарубіжної літератури',
+    };
+
+    const lowercaseSubjectName = subjectName.toLowerCase();
+    const subjectForm = subjectsForms[lowercaseSubjectName];
+
+    return subjectForm || null;
+  }
 }
