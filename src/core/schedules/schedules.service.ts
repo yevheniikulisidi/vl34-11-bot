@@ -74,14 +74,21 @@ export class SchedulesService implements OnModuleInit {
   }
 
   private findMeetingUrl(subjects: DiarySubject[]): string | null {
-    return (
-      subjects
-        .flatMap((diarySubject) => diarySubject.hometask)
-        .find((diaryHometask) => {
-          const match = diaryHometask.match(/meet\.google\.com\/([a-z-]+)/);
-          return match ? `https://meet.google.com/${match[1]}` : null;
-        }) || null
-    );
+    for (const diarySubject of subjects) {
+      const hometasks = diarySubject.hometask;
+
+      if (hometasks && Array.isArray(hometasks)) {
+        const meetingUrl = hometasks
+          .map((task) => task.match(/meet\.google\.com\/([a-z-]+)/))
+          .find((match) => match !== null);
+
+        if (meetingUrl) {
+          return `https://meet.google.com/${meetingUrl[1]}`;
+        }
+      }
+    }
+
+    return null;
   }
 
   async getSchedule(
