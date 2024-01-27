@@ -1,13 +1,16 @@
 import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Processor, OnQueueFailed, Process } from '@nestjs/bull';
+import { Processor, InjectQueue, OnQueueFailed, Process } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job } from 'bull';
+import { Queue, Job } from 'bull';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { chain, isEqual } from 'lodash';
+import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
+import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { NzService } from 'src/integrations/nz/nz.service';
-import { Schedule } from '../interfaces/schedule.interface';
+import { LessonUpdates } from '../interfaces/lesson-updates.interface';
+import { Schedule, ScheduleLesson } from '../interfaces/schedule.interface';
 import { SchedulesService } from '../schedules.service';
 
 @Processor('schedules')
@@ -15,10 +18,14 @@ export class SchedulesConsumer {
   private readonly logger = new Logger(SchedulesConsumer.name);
 
   constructor(
+    @InjectQueue('message-distribution')
+    private readonly messageDistributionQueue: Queue,
     @InjectRedis() private readonly redis: Redis,
     private readonly configService: ConfigService,
     private readonly nzService: NzService,
     private readonly schedulesService: SchedulesService,
+    private readonly settingsRepository: SettingsRepository,
+    private readonly usersRepository: UsersRepository,
   ) {}
 
   @OnQueueFailed()
@@ -111,6 +118,45 @@ export class SchedulesConsumer {
 
     const schedule = this.mergeSchedules(boySchedule, girlSchedule);
 
+    const settings = await this.settingsRepository.findSettings();
+    const { isDistanceEducation } =
+      settings || (await this.settingsRepository.createSettings());
+
+    if (isDistanceEducation) {
+      const todayDate = now.format('YYYY-MM-DD');
+
+      const oldTodayScheduleLessons = await this.schedulesService.getSchedule(
+        _class,
+        todayDate,
+      );
+
+      const newTodayScheduleLessons = schedule.dates.find(
+        (date) => date.date === todayDate,
+      );
+
+      if (newTodayScheduleLessons) {
+        const lessonUpdates = this.compareScheduleLessons(
+          oldTodayScheduleLessons,
+          newTodayScheduleLessons.lessons,
+        );
+
+        if (lessonUpdates.length > 0) {
+          const scheduleClass = _class === '11a' ? 'CLASS_11A' : 'CLASS_11B';
+          const users =
+            await this.usersRepository.findUsersNotifyingLessonUpdates(
+              scheduleClass,
+            );
+
+          await this.messageDistributionQueue.addBulk(
+            users.map((user) => ({
+              data: { userId: user.id.toString(), lessonUpdates },
+              name: 'lesson-updates',
+            })),
+          );
+        }
+      }
+    }
+
     await this.cacheSchedule(_class, schedule, 7 * 24 * 60 * 60);
 
     if (now.day() === 0) {
@@ -184,5 +230,87 @@ export class SchedulesConsumer {
     const now = dayjs().toISOString();
 
     await this.redis.set(`${_class}:updated-at`, now);
+  }
+
+  private compareScheduleLessons(
+    oldScheduleLessons: ScheduleLesson[],
+    newScheduleLessons: ScheduleLesson[],
+  ): LessonUpdates[] {
+    const updates: LessonUpdates[] = [];
+
+    for (const newLesson of newScheduleLessons) {
+      const oldLesson = oldScheduleLessons.find(
+        (l) => l.number === newLesson.number,
+      );
+
+      if (!oldLesson) {
+        updates.push({
+          type: 'addedLesson',
+          number: newLesson.number,
+          subjects: newLesson.subjects,
+        });
+      } else {
+        for (const newSubject of newLesson.subjects) {
+          const oldSubject = oldLesson.subjects.find(
+            (s) => s.name === newSubject.name,
+          );
+
+          if (!oldSubject) {
+            updates.push({
+              type: 'addedSubject',
+              number: newLesson.number,
+              subjects: [newSubject],
+            });
+          } else {
+            if (
+              oldSubject.meetingUrl === null &&
+              newSubject.meetingUrl !== null
+            ) {
+              updates.push({
+                type: 'addedMeetingUrl',
+                number: newLesson.number,
+                subjects: [newSubject],
+              });
+            } else if (oldSubject.meetingUrl !== newSubject.meetingUrl) {
+              updates.push({
+                type: 'removedMeetingUrl',
+                number: newLesson.number,
+                subjects: [newSubject],
+              });
+            }
+          }
+        }
+
+        for (const oldSubject of oldLesson.subjects) {
+          const newSubject = newLesson.subjects.find(
+            (s) => s.name === oldSubject.name,
+          );
+
+          if (!newSubject) {
+            updates.push({
+              type: 'removedSubject',
+              number: newLesson.number,
+              subjects: [oldSubject],
+            });
+          }
+        }
+      }
+    }
+
+    for (const oldLesson of oldScheduleLessons) {
+      const newLesson = newScheduleLessons.find(
+        (l) => l.number === oldLesson.number,
+      );
+
+      if (!newLesson) {
+        updates.push({
+          type: 'removedLesson',
+          number: oldLesson.number,
+          subjects: oldLesson.subjects,
+        });
+      }
+    }
+
+    return updates;
   }
 }

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { $Enums, Prisma } from '@prisma/client';
 import { PrismaService } from 'src/database/prisma.service';
 
 @Injectable()
@@ -16,7 +16,7 @@ export class UsersRepository {
 
   async updateUser(
     id: number | bigint,
-    data: Pick<Prisma.UserUpdateInput, 'class'>,
+    data: Pick<Prisma.UserUpdateInput, 'class' | 'isNotifyingLessonUpdates'>,
   ) {
     return await this.prisma.user.update({ data, where: { id } });
   }
@@ -28,5 +28,16 @@ export class UsersRepository {
       this.prisma.user.count({ where: { class: null } }),
       this.prisma.user.count(),
     ]);
+  }
+
+  async findUsersWithId() {
+    return await this.prisma.user.findMany({ select: { id: true } });
+  }
+
+  async findUsersNotifyingLessonUpdates(_class: $Enums.Class) {
+    return await this.prisma.user.findMany({
+      select: { id: true },
+      where: { class: _class, isNotifyingLessonUpdates: true },
+    });
   }
 }
