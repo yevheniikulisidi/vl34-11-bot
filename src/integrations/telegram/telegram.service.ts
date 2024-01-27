@@ -713,7 +713,7 @@ export class TelegramService implements OnModuleInit {
     }
   }
 
-  getSubjectForms(subjectName: string) {
+  getSubjectForm(subjectName: string) {
     const subjectsForms: Record<string, string> = {
       алгебра: 'алгебри',
       'англійська мова': 'англійської мови',
