@@ -204,6 +204,16 @@ export class SchedulesConsumer {
               endTime: lessonGroup[0].endTime,
               subjects: chain(lessonGroup)
                 .flatMap('subjects')
+                .groupBy('teacherName')
+                .map((subjectGroup) => {
+                  const subjectWithMeetingUrl = subjectGroup.find(
+                    (subject) => subject.meetingUrl !== null,
+                  );
+
+                  return subjectWithMeetingUrl
+                    ? subjectWithMeetingUrl
+                    : subjectGroup[0];
+                })
                 .uniqWith(isEqual)
                 .value(),
             }))
