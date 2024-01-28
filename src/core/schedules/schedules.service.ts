@@ -53,6 +53,7 @@ export class SchedulesService implements OnModuleInit {
               meetingUrl: diaryCall
                 ? this.findMeetingUrl(diaryCall.subjects)
                 : null,
+              teacherName: timetableSubject.teacher.name,
             })),
           };
         }),

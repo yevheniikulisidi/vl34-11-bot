@@ -322,32 +322,36 @@ export class TelegramService implements OnModuleInit {
             let formattedLesson = '';
 
             if (isNow) {
-              formattedLesson = `<b>${lesson.number}. ${lesson.subjects
-                .map(
-                  (lessonSubject) =>
-                    `${
-                      lessonSubject.meetingUrl
-                        ? `<a href="${lessonSubject.meetingUrl}">${lessonSubject.name}</a>`
-                        : lessonSubject.name
-                    } <i>(${formattedStartTime} - ${formattedEndTime})</i>`,
-                )
-                .join('\n     ')}</b>`;
+              formattedLesson =
+                `<b>${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})</b>\n` +
+                `${lesson.subjects
+                  .map(
+                    (subject) =>
+                      `${
+                        subject.meetingUrl
+                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                          : `- ${subject.name} (${subject.teacherName})`
+                      }`,
+                  )
+                  .join('\n')}`;
             } else {
-              formattedLesson = `${lesson.number}. ${lesson.subjects
-                .map(
-                  (lessonSubject) =>
-                    `${
-                      lessonSubject.meetingUrl
-                        ? `<a href="${lessonSubject.meetingUrl}">${lessonSubject.name}</a>`
-                        : lessonSubject.name
-                    } <i>(${formattedStartTime} - ${formattedEndTime})</i>`,
-                )
-                .join('\n    ')}`;
+              formattedLesson =
+                `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
+                `${lesson.subjects
+                  .map(
+                    (subject) =>
+                      `${
+                        subject.meetingUrl
+                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                          : `- ${subject.name} (${subject.teacherName})`
+                      }`,
+                  )
+                  .join('\n')}`;
             }
 
             return formattedLesson;
           })
-          .join('\n');
+          .join('\n\n');
 
         const updatedAt = await this.schedulesService.updatedAt(userClass);
 
@@ -357,7 +361,7 @@ export class TelegramService implements OnModuleInit {
             ? `<b>⚠️ Увага! Проблеми з НЗ!</b>`
             : '';
 
-        const scheduleText = `<b>${dayText}</b>\n${lessonsText}\n\n${nzProblemsText}`;
+        const scheduleText = `<b>${dayText}</b>\n\n${lessonsText}\n\n${nzProblemsText}`;
 
         await ctx.editMessageText(scheduleText, {
           link_preview_options: { is_disabled: true },

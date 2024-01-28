@@ -1,6 +1,7 @@
 export interface ScheduleSubject {
   name: string;
   meetingUrl: string | null;
+  teacherName: string;
 }
 
 export interface ScheduleLesson {
