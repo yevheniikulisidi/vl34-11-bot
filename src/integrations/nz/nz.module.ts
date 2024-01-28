@@ -6,7 +6,7 @@ import { NzService } from './nz.service';
   imports: [
     HttpModule.register({
       baseURL: 'https://api-mobile.nz.ua/v1',
-      headers: { 'User-Agent': 'vl34-11-bot/1.4.1' },
+      headers: { 'User-Agent': 'vl34-11-bot/1.4.2' },
     }),
   ],
   providers: [NzService],
