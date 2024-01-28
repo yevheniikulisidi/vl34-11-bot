@@ -125,19 +125,19 @@ export class SchedulesConsumer {
     if (isDistanceEducation) {
       const todayDate = now.format('YYYY-MM-DD');
 
-      const oldTodayScheduleLessons = await this.schedulesService.getSchedule(
-        _class,
-        todayDate,
-      );
-
       const newTodayScheduleLessons = schedule.dates.find(
         (date) => date.date === todayDate,
-      );
+      )?.lessons;
 
       if (newTodayScheduleLessons) {
+        const oldTodayScheduleLessons = await this.schedulesService.getSchedule(
+          _class,
+          todayDate,
+        );
+
         const lessonUpdates = this.compareScheduleLessons(
           oldTodayScheduleLessons,
-          newTodayScheduleLessons.lessons,
+          newTodayScheduleLessons,
         );
 
         if (lessonUpdates.length > 0) {
@@ -236,27 +236,27 @@ export class SchedulesConsumer {
     oldScheduleLessons: ScheduleLesson[],
     newScheduleLessons: ScheduleLesson[],
   ): LessonUpdates[] {
-    const updates: LessonUpdates[] = [];
+    const lessonUpdates: LessonUpdates[] = [];
 
-    for (const newLesson of newScheduleLessons) {
+    newScheduleLessons.forEach((newLesson) => {
       const oldLesson = oldScheduleLessons.find(
-        (l) => l.number === newLesson.number,
+        (lesson) => lesson.number === newLesson.number,
       );
-
       if (!oldLesson) {
-        updates.push({
+        lessonUpdates.push({
           type: 'addedLesson',
           number: newLesson.number,
           subjects: newLesson.subjects,
         });
       } else {
-        for (const newSubject of newLesson.subjects) {
+        newLesson.subjects.forEach((newSubject) => {
           const oldSubject = oldLesson.subjects.find(
-            (s) => s.name === newSubject.name,
+            (subject) =>
+              subject.name === newSubject.name &&
+              subject.teacherName === newSubject.teacherName,
           );
-
           if (!oldSubject) {
-            updates.push({
+            lessonUpdates.push({
               type: 'addedSubject',
               number: newLesson.number,
               subjects: [newSubject],
@@ -266,51 +266,59 @@ export class SchedulesConsumer {
               oldSubject.meetingUrl === null &&
               newSubject.meetingUrl !== null
             ) {
-              updates.push({
+              lessonUpdates.push({
                 type: 'addedMeetingUrl',
                 number: newLesson.number,
                 subjects: [newSubject],
               });
             } else if (oldSubject.meetingUrl !== newSubject.meetingUrl) {
-              updates.push({
-                type: 'removedMeetingUrl',
-                number: newLesson.number,
-                subjects: [newSubject],
-              });
+              if (newSubject.meetingUrl === null) {
+                lessonUpdates.push({
+                  type: 'removedMeetingUrl',
+                  number: newLesson.number,
+                  subjects: [newSubject],
+                });
+              } else {
+                lessonUpdates.push({
+                  type: 'updatedMeetingUrl',
+                  number: newLesson.number,
+                  subjects: [newSubject],
+                });
+              }
             }
           }
-        }
-
-        for (const oldSubject of oldLesson.subjects) {
-          const newSubject = newLesson.subjects.find(
-            (s) => s.name === oldSubject.name,
-          );
-
-          if (!newSubject) {
-            updates.push({
-              type: 'removedSubject',
-              number: newLesson.number,
-              subjects: [oldSubject],
-            });
-          }
-        }
+        });
       }
-    }
+    });
 
-    for (const oldLesson of oldScheduleLessons) {
+    oldScheduleLessons.forEach((oldLesson) => {
       const newLesson = newScheduleLessons.find(
-        (l) => l.number === oldLesson.number,
+        (lesson) => lesson.number === oldLesson.number,
       );
-
       if (!newLesson) {
-        updates.push({
+        lessonUpdates.push({
           type: 'removedLesson',
           number: oldLesson.number,
           subjects: oldLesson.subjects,
         });
+      } else {
+        oldLesson.subjects.forEach((oldSubject) => {
+          const newSubject = newLesson.subjects.find(
+            (subject) =>
+              subject.name === oldSubject.name &&
+              subject.teacherName === oldSubject.teacherName,
+          );
+          if (!newSubject) {
+            lessonUpdates.push({
+              type: 'removedSubject',
+              number: oldLesson.number,
+              subjects: [oldSubject],
+            });
+          }
+        });
       }
-    }
+    });
 
-    return updates;
+    return lessonUpdates;
   }
 }
