@@ -56,6 +56,7 @@ export class TelegramService implements OnModuleInit {
     this.onAdminUsersCallbackQuery();
     this.onAdminAnalyticsCallbackQuery();
     this.onAdminDistanceEducationCallbackQuery();
+    this.onAdminTechnicalWorksCallbackQuery();
     this.onProfileLessonUpdatesCallbackQuery();
 
     this.bot.start({
@@ -114,6 +115,15 @@ export class TelegramService implements OnModuleInit {
 
   onScheduleText() {
     this.bot.hears('📅 Розклад', async (ctx) => {
+      const settings = await this.settingsRepository.findSettings();
+      const { isTechnicalWorks } =
+        settings || (await this.settingsRepository.createSettings());
+
+      if (isTechnicalWorks) {
+        await ctx.reply('🛠 Технічні роботи');
+        return;
+      }
+
       if (!ctx.from) return;
 
       const userId = ctx.from.id;
@@ -223,6 +233,15 @@ export class TelegramService implements OnModuleInit {
     this.bot.callbackQuery(
       /^schedule:([0-9]{4}-[0-9]{2}-[0-9]{2})$/,
       async (ctx) => {
+        const settings = await this.settingsRepository.findSettings();
+        const { isTechnicalWorks } =
+          settings || (await this.settingsRepository.createSettings());
+
+        if (isTechnicalWorks) {
+          await ctx.editMessageText('🛠 Технічні роботи');
+          return;
+        }
+
         if (!ctx.from) return;
 
         const userId = ctx.from.id;
@@ -520,18 +539,23 @@ export class TelegramService implements OnModuleInit {
       }
 
       const settings = await this.settingsRepository.findSettings();
-      const { isDistanceEducation } =
+      const { isDistanceEducation, isTechnicalWorks } =
         settings || (await this.settingsRepository.createSettings());
 
       const distanceEducationIndicator = isDistanceEducation ? '✅' : '❌';
       const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
+
+      const technicalWorksIndicator = isTechnicalWorks ? '✅' : '❌';
+      const technicalWorksText = `${technicalWorksIndicator} Технічні роботи`;
 
       const adminKeyboard = new InlineKeyboard()
         .text('👥 Користувачі', 'admin:users')
         .row()
         .text('📊 Аналітика', 'admin:analytics')
         .row()
-        .text(distanceEducationText, 'admin:distance-education');
+        .text(distanceEducationText, 'admin:distance-education')
+        .row()
+        .text(technicalWorksText, 'admin:technical-works');
 
       await ctx.reply('Обери розділ:', { reply_markup: adminKeyboard });
     });
@@ -610,8 +634,11 @@ export class TelegramService implements OnModuleInit {
       }
 
       const settings = await this.settingsRepository.findSettings();
-      const { id: settingsId, isDistanceEducation } =
-        settings || (await this.settingsRepository.createSettings());
+      const {
+        id: settingsId,
+        isDistanceEducation,
+        isTechnicalWorks,
+      } = settings || (await this.settingsRepository.createSettings());
 
       const { isDistanceEducation: updatedIsDistanceEducation } =
         await this.settingsRepository.updateSettings(settingsId, {
@@ -623,12 +650,17 @@ export class TelegramService implements OnModuleInit {
         : '❌';
       const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
 
+      const technicalWorksIndicator = isTechnicalWorks ? '✅' : '❌';
+      const technicalWorksText = `${technicalWorksIndicator} Технічні роботи`;
+
       const adminKeyboard = new InlineKeyboard()
         .text('👥 Користувачі', 'admin:users')
         .row()
         .text('📊 Аналітика', 'admin:analytics')
         .row()
-        .text(distanceEducationText, 'admin:distance-education');
+        .text(distanceEducationText, 'admin:distance-education')
+        .row()
+        .text(technicalWorksText, 'admin:technical-works');
 
       await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
       await ctx.answerCallbackQuery();
@@ -739,5 +771,47 @@ export class TelegramService implements OnModuleInit {
     const subjectForm = subjectsForms[lowercaseSubjectName];
 
     return subjectForm || null;
+  }
+
+  async onAdminTechnicalWorksCallbackQuery() {
+    this.bot.callbackQuery('admin:technical-works', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const settings = await this.settingsRepository.findSettings();
+      const {
+        id: settingsId,
+        isDistanceEducation,
+        isTechnicalWorks,
+      } = settings || (await this.settingsRepository.createSettings());
+
+      const distanceEducationIndicator = isDistanceEducation ? '✅' : '❌';
+      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
+
+      const { isTechnicalWorks: updatedIsTechnicalWorks } =
+        await this.settingsRepository.updateSettings(settingsId, {
+          isTechnicalWorks: !isTechnicalWorks,
+        });
+
+      const technicalWorksIndicator = updatedIsTechnicalWorks ? '✅' : '❌';
+      const technicalWorksText = `${technicalWorksIndicator} Технічні роботи`;
+
+      const adminKeyboard = new InlineKeyboard()
+        .text('👥 Користувачі', 'admin:users')
+        .row()
+        .text('📊 Аналітика', 'admin:analytics')
+        .row()
+        .text(distanceEducationText, 'admin:distance-education')
+        .row()
+        .text(technicalWorksText, 'admin:technical-works');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
+      await ctx.answerCallbackQuery();
+    });
   }
 }
