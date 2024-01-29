@@ -16,7 +16,10 @@ export class SettingsRepository {
 
   async updateSettings(
     id: string,
-    data: Pick<Prisma.SettingsUpdateInput, 'isDistanceEducation'>,
+    data: Pick<
+      Prisma.SettingsUpdateInput,
+      'isDistanceEducation' | 'isTechnicalWorks'
+    >,
   ) {
     return await this.prisma.settings.update({ data, where: { id } });
   }

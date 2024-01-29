@@ -119,10 +119,10 @@ export class SchedulesConsumer {
     const schedule = this.mergeSchedules(boySchedule, girlSchedule);
 
     const settings = await this.settingsRepository.findSettings();
-    const { isDistanceEducation } =
+    const { isDistanceEducation, isTechnicalWorks } =
       settings || (await this.settingsRepository.createSettings());
 
-    if (isDistanceEducation) {
+    if (isDistanceEducation && !isTechnicalWorks) {
       const todayDate = now.format('YYYY-MM-DD');
 
       const newTodayScheduleLessons = schedule.dates.find(
