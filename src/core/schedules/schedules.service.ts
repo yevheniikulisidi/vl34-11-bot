@@ -40,6 +40,7 @@ export class SchedulesService implements OnModuleInit {
         date: timetableDate.date,
         lessons: timetableDate.calls.map((timetableCall) => {
           const diaryCall = this.findDiaryCall(
+            timetableDate.date,
             timetableCall.call_number,
             diary,
           );
@@ -66,10 +67,12 @@ export class SchedulesService implements OnModuleInit {
   }
 
   private findDiaryCall(
+    scheduleDate: string,
     callNumber: number,
     diary: Diary,
   ): DiaryCall | undefined {
     return diary.dates
+      .filter((diaryDate) => diaryDate.date === scheduleDate)
       .flatMap((diaryDate) => diaryDate.calls)
       .find((diaryCall) => diaryCall.call_number === callNumber);
   }
