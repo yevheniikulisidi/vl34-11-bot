@@ -61,4 +61,25 @@ export class MessageDistributionConsumer {
 
     await this.telegramService.sendMessage(job.data.userId, lessonUpdatesText);
   }
+
+  @Process('announcement')
+  async onAnnouncement(job: Job<{ userId: string; _class: '11a' | '11b' }>) {
+    const schedule = {
+      class11a:
+        'https://docs.google.com/spreadsheets/d/10rRr75cCJqXwacZQIMvBSTOgz3g3YU9y3V2335BhybA/edit?usp=sharing',
+      class11b:
+        'https://docs.google.com/spreadsheets/d/1vNGEBvlPthMrKYjusA5w4Tx2MV6W3gA2WhSVMHSWWpw/edit?usp=sharing',
+    };
+
+    const announcementTitleText = 'Важливе оголошення ⚠️';
+    const scheduleUrl =
+      job.data._class === '11a' ? schedule.class11a : schedule.class11b;
+    const announcementContentText =
+      'Через часті збої доступу до веб-сайту (Нові Знання) викладачі та інші користувачі стикаються з проблемами у доступі. ' +
+      `Будь ласка, скористайся тимчасовим розкладом у Google-таблиці: ${scheduleUrl}`;
+    const announcementText =
+      `<b>${announcementTitleText}</b>` + '\n\n' + announcementContentText;
+
+    await this.telegramService.sendMessage(job.data.userId, announcementText);
+  }
 }

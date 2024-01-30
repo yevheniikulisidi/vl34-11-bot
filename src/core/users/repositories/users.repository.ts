@@ -40,4 +40,11 @@ export class UsersRepository {
       where: { class: _class, isNotifyingLessonUpdates: true },
     });
   }
+
+  async findUsersWithIdAndClass() {
+    return await this.prisma.user.findMany({
+      select: { id: true, class: true },
+      where: { class: { not: null } },
+    });
+  }
 }

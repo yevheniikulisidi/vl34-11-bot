@@ -43,6 +43,7 @@ export class TelegramService implements OnModuleInit {
     // Commands
     this.onStartCommand();
     this.onUpdateCommand();
+    this.onAnnouncementCommand();
 
     // Texts
     this.onProfileText();
@@ -737,6 +738,7 @@ export class TelegramService implements OnModuleInit {
       const mainKeyboard = this.getMainKeyboard(Number(userId));
 
       await this.bot.api.sendMessage(userId, text, {
+        link_preview_options: { is_disabled: true },
         parse_mode: 'HTML',
         reply_markup: mainKeyboard,
       });
@@ -812,6 +814,32 @@ export class TelegramService implements OnModuleInit {
 
       await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
       await ctx.answerCallbackQuery();
+    });
+  }
+
+  async onAnnouncementCommand() {
+    this.bot.command('announcement', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+
+      if (this.superAdminId !== userId) {
+        return;
+      }
+
+      const users = await this.usersRepository.findUsersWithIdAndClass();
+
+      await this.messageDistributionQueue.addBulk(
+        users.map((user) => ({
+          data: {
+            userId: user.id.toString(),
+            _class: user.class === 'CLASS_11A' ? '11a' : '11b',
+          },
+          name: 'announcement',
+        })),
+      );
+
+      await ctx.reply('Розсилка успішна ✅');
     });
   }
 }
