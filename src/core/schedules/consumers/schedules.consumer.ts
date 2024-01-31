@@ -254,7 +254,7 @@ export class SchedulesConsumer {
         (lesson) => lesson.number === newLesson.number,
       );
       if (!oldLesson) {
-        if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+        if (dayjs(currentTime).isBefore(dayjs(newLesson.endTime, 'HH:mm'))) {
           lessonUpdates.push({
             type: 'addedLesson',
             number: newLesson.number,
@@ -269,7 +269,9 @@ export class SchedulesConsumer {
               subject.teacherName === newSubject.teacherName,
           );
           if (!oldSubject) {
-            if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+            if (
+              dayjs(currentTime).isBefore(dayjs(newLesson.endTime, 'HH:mm'))
+            ) {
               lessonUpdates.push({
                 type: 'addedSubject',
                 number: newLesson.number,
@@ -281,7 +283,9 @@ export class SchedulesConsumer {
               oldSubject.meetingUrl === null &&
               newSubject.meetingUrl !== null
             ) {
-              if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+              if (
+                dayjs(currentTime).isBefore(dayjs(newLesson.endTime, 'HH:mm'))
+              ) {
                 lessonUpdates.push({
                   type: 'addedMeetingUrl',
                   number: newLesson.number,
@@ -290,7 +294,9 @@ export class SchedulesConsumer {
               }
             } else if (oldSubject.meetingUrl !== newSubject.meetingUrl) {
               if (newSubject.meetingUrl === null) {
-                if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+                if (
+                  dayjs(currentTime).isBefore(dayjs(newLesson.endTime, 'HH:mm'))
+                ) {
                   lessonUpdates.push({
                     type: 'removedMeetingUrl',
                     number: newLesson.number,
@@ -298,7 +304,9 @@ export class SchedulesConsumer {
                   });
                 }
               } else {
-                if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+                if (
+                  dayjs(currentTime).isBefore(dayjs(newLesson.endTime, 'HH:mm'))
+                ) {
                   lessonUpdates.push({
                     type: 'updatedMeetingUrl',
                     number: newLesson.number,
@@ -317,7 +325,7 @@ export class SchedulesConsumer {
         (lesson) => lesson.number === oldLesson.number,
       );
       if (!newLesson) {
-        if (dayjs(oldLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+        if (dayjs(currentTime).isBefore(dayjs(oldLesson.endTime, 'HH:mm'))) {
           lessonUpdates.push({
             type: 'removedLesson',
             number: oldLesson.number,
@@ -332,7 +340,9 @@ export class SchedulesConsumer {
               subject.teacherName === oldSubject.teacherName,
           );
           if (!newSubject) {
-            if (dayjs(oldLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+            if (
+              dayjs(currentTime).isBefore(dayjs(oldLesson.endTime, 'HH:mm'))
+            ) {
               lessonUpdates.push({
                 type: 'removedSubject',
                 number: oldLesson.number,
