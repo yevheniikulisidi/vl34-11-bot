@@ -235,7 +235,7 @@ export class TelegramService implements OnModuleInit {
       /^schedule:([0-9]{4}-[0-9]{2}-[0-9]{2})$/,
       async (ctx) => {
         const settings = await this.settingsRepository.findSettings();
-        const { isTechnicalWorks } =
+        const { isDistanceEducation, isTechnicalWorks } =
           settings || (await this.settingsRepository.createSettings());
 
         if (isTechnicalWorks) {
@@ -321,6 +321,10 @@ export class TelegramService implements OnModuleInit {
         }`;
         const lessonsText = schedule
           .map((lesson) => {
+            const isOnlineLesson = lesson.subjects.some(
+              (subject) => subject.meetingUrl !== null,
+            );
+
             const isNow = dayjs()
               .utc()
               .isBetween(
@@ -341,7 +345,7 @@ export class TelegramService implements OnModuleInit {
 
             let formattedLesson = '';
 
-            if (isNow) {
+            if ((isDistanceEducation && isOnlineLesson && isNow) || isNow) {
               formattedLesson =
                 `<b>${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})</b>\n` +
                 `${lesson.subjects
