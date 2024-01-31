@@ -247,17 +247,20 @@ export class SchedulesConsumer {
     newScheduleLessons: ScheduleLesson[],
   ): LessonUpdates[] {
     const lessonUpdates: LessonUpdates[] = [];
+    const currentTime = dayjs().utc();
 
     newScheduleLessons.forEach((newLesson) => {
       const oldLesson = oldScheduleLessons.find(
         (lesson) => lesson.number === newLesson.number,
       );
       if (!oldLesson) {
-        lessonUpdates.push({
-          type: 'addedLesson',
-          number: newLesson.number,
-          subjects: newLesson.subjects,
-        });
+        if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+          lessonUpdates.push({
+            type: 'addedLesson',
+            number: newLesson.number,
+            subjects: newLesson.subjects,
+          });
+        }
       } else {
         newLesson.subjects.forEach((newSubject) => {
           const oldSubject = oldLesson.subjects.find(
@@ -266,34 +269,42 @@ export class SchedulesConsumer {
               subject.teacherName === newSubject.teacherName,
           );
           if (!oldSubject) {
-            lessonUpdates.push({
-              type: 'addedSubject',
-              number: newLesson.number,
-              subjects: [newSubject],
-            });
+            if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+              lessonUpdates.push({
+                type: 'addedSubject',
+                number: newLesson.number,
+                subjects: [newSubject],
+              });
+            }
           } else {
             if (
               oldSubject.meetingUrl === null &&
               newSubject.meetingUrl !== null
             ) {
-              lessonUpdates.push({
-                type: 'addedMeetingUrl',
-                number: newLesson.number,
-                subjects: [newSubject],
-              });
+              if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+                lessonUpdates.push({
+                  type: 'addedMeetingUrl',
+                  number: newLesson.number,
+                  subjects: [newSubject],
+                });
+              }
             } else if (oldSubject.meetingUrl !== newSubject.meetingUrl) {
               if (newSubject.meetingUrl === null) {
-                lessonUpdates.push({
-                  type: 'removedMeetingUrl',
-                  number: newLesson.number,
-                  subjects: [newSubject],
-                });
+                if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+                  lessonUpdates.push({
+                    type: 'removedMeetingUrl',
+                    number: newLesson.number,
+                    subjects: [newSubject],
+                  });
+                }
               } else {
-                lessonUpdates.push({
-                  type: 'updatedMeetingUrl',
-                  number: newLesson.number,
-                  subjects: [newSubject],
-                });
+                if (dayjs(newLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+                  lessonUpdates.push({
+                    type: 'updatedMeetingUrl',
+                    number: newLesson.number,
+                    subjects: [newSubject],
+                  });
+                }
               }
             }
           }
@@ -306,11 +317,13 @@ export class SchedulesConsumer {
         (lesson) => lesson.number === oldLesson.number,
       );
       if (!newLesson) {
-        lessonUpdates.push({
-          type: 'removedLesson',
-          number: oldLesson.number,
-          subjects: oldLesson.subjects,
-        });
+        if (dayjs(oldLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+          lessonUpdates.push({
+            type: 'removedLesson',
+            number: oldLesson.number,
+            subjects: oldLesson.subjects,
+          });
+        }
       } else {
         oldLesson.subjects.forEach((oldSubject) => {
           const newSubject = newLesson.subjects.find(
@@ -319,11 +332,13 @@ export class SchedulesConsumer {
               subject.teacherName === oldSubject.teacherName,
           );
           if (!newSubject) {
-            lessonUpdates.push({
-              type: 'removedSubject',
-              number: oldLesson.number,
-              subjects: [oldSubject],
-            });
+            if (dayjs(oldLesson.endTime, 'HH:mm').isAfter(currentTime)) {
+              lessonUpdates.push({
+                type: 'removedSubject',
+                number: oldLesson.number,
+                subjects: [oldSubject],
+              });
+            }
           }
         });
       }
