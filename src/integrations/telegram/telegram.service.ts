@@ -382,7 +382,9 @@ export class TelegramService implements OnModuleInit {
         const now = dayjs().utc();
         const nzProblemsText =
           updatedAt && now.diff(dayjs(updatedAt), 'minute') >= 10
-            ? `<b>⚠️ Увага! Проблеми з НЗ!</b>`
+            ? `<b>⚠️ Увага! Останнє оновлення розкладу: ${dayjs(updatedAt)
+                .tz('Europe/Kyiv')
+                .format('DD.MM.YYYY о HH:mm')}.</b>`
             : '';
 
         const scheduleText = `<b>${dayText}</b>\n\n${lessonsText}\n\n${nzProblemsText}`;
