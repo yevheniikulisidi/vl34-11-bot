@@ -1,22 +1,31 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
+import dayjs from 'dayjs';
 import {
   LessonUpdates,
   LessonUpdateType,
 } from 'src/core/schedules/interfaces/lesson-updates.interface';
+import { SchedulesService } from 'src/core/schedules/schedules.service';
+import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { TelegramService } from '../telegram.service';
 
 @Processor('message-distribution')
 export class MessageDistributionConsumer {
-  constructor(private readonly telegramService: TelegramService) {}
+  constructor(
+    private readonly telegramService: TelegramService,
+    private readonly usersRepository: UsersRepository,
+    private readonly schedulesService: SchedulesService,
+  ) {}
 
   @Process('update')
   async onUpdate(job: Job<{ userId: string }>) {
     const updateTitleText = 'Нова функція бота ✨';
     const updateContentText =
-      'Тепер бот моментально сповіщає, якщо викладач вніс зміни в посилання на конференції або уроки.' +
+      'Тепер бот висилає щоденний розклад уроків на наступний день вранці о 7:30.' +
       '\n\n' +
-      '<i>Підписатися або відписатися від отримання сповіщень можна в профілі.</i>';
+      '🔄 Якщо буде зміна в розкладі і ти підписаний на "Оновлення уроків", бот тебе про неї сповістить.' +
+      '\n\n' +
+      '<i>Підписатися або відписатися від отримання щоденного розкладу можна в профілі.</i>';
     const updateText = `<b>${updateTitleText}</b>` + '\n\n' + updateContentText;
 
     await this.telegramService.sendMessage(job.data.userId, updateText);
@@ -30,15 +39,15 @@ export class MessageDistributionConsumer {
       addedLesson: '📚 Додано {{lessonNumber}}-й урок ({{subjectsNames}}).',
       removedLesson: '🗑️ Видалено {{lessonNumber}}-й урок ({{subjectsNames}}).',
       addedSubject:
-        '➕ Додано предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '➕ Додано предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       removedSubject:
-        '➖ Видалено предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '➖ Видалено предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       addedMeetingUrl:
-        '🔗 Додано посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '🔗 Додано посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       updatedMeetingUrl:
-        '🔄 Оновлено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '🔄 Оновлено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       removedMeetingUrl:
-        '❌ Видалено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '❌ Видалено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
     };
 
     const lessonUpdatesText = job.data.lessonUpdates
@@ -52,6 +61,12 @@ export class MessageDistributionConsumer {
             '{{subjectsNames}}',
             lessonUpdate.subjects
               .map((subject) => subject.name.toLowerCase())
+              .join('/'),
+          )
+          .replace(
+            '{{teacherName}}',
+            lessonUpdate.subjects
+              .map((subject) => subject.teacherName)
               .join('/'),
           );
 
@@ -81,5 +96,75 @@ export class MessageDistributionConsumer {
       `<b>${announcementTitleText}</b>` + '\n\n' + announcementContentText;
 
     await this.telegramService.sendMessage(job.data.userId, announcementText);
+  }
+
+  @Process('daily-schedule')
+  async onDailySchedule(job: Job<{ userId: string }>) {
+    const user = await this.usersRepository.findUser(+job.data.userId);
+
+    if (!user) {
+      return;
+    }
+
+    const today = dayjs().tz('Europe/Kyiv');
+    const scheduleDate = today.format('YYYY-MM-DD');
+    const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+    const schedule = await this.schedulesService.getSchedule(
+      userClass,
+      scheduleDate,
+    );
+
+    if (schedule.length === 0) {
+      const noScheduleText = `📆 Щоденний розклад (${today.format(
+        'DD.MM.YYYY',
+      )})\n\nУроків немає.`;
+
+      await this.telegramService.sendMessage(job.data.userId, noScheduleText);
+
+      return;
+    }
+
+    const dayText = `📆 Щоденний розклад (${today.format('DD.MM.YYYY')})`;
+    const lessonsText = schedule
+      .map((lesson) => {
+        const formattedStartTime = dayjs
+          .utc(lesson.startTime, 'HH:mm')
+          .tz('Europe/Kyiv')
+          .format('H:mm');
+        const formattedEndTime = dayjs
+          .utc(lesson.endTime, 'HH:mm')
+          .tz('Europe/Kyiv')
+          .format('H:mm');
+
+        const formattedLesson =
+          `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
+          `${lesson.subjects
+            .map(
+              (subject) =>
+                `${
+                  subject.meetingUrl
+                    ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                    : `- ${subject.name} (${subject.teacherName})`
+                }`,
+            )
+            .join('\n')}`;
+
+        return formattedLesson;
+      })
+      .join('\n\n');
+
+    const updatedAt = await this.schedulesService.updatedAt(userClass);
+
+    const now = dayjs().utc();
+    const nzProblemsText =
+      updatedAt && now.diff(dayjs(updatedAt), 'minute') >= 10
+        ? `<b>⚠️ Увага! Останнє оновлення розкладу: ${dayjs(updatedAt)
+            .tz('Europe/Kyiv')
+            .format('DD.MM.YYYY о HH:mm')}.</b>`
+        : '';
+
+    const scheduleText = `<b>${dayText}</b>\n\n${lessonsText}\n\n${nzProblemsText}`;
+
+    await this.telegramService.sendMessage(job.data.userId, scheduleText);
   }
 }
