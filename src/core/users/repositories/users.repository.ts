@@ -16,7 +16,10 @@ export class UsersRepository {
 
   async updateUser(
     id: number | bigint,
-    data: Pick<Prisma.UserUpdateInput, 'class' | 'isNotifyingLessonUpdates'>,
+    data: Pick<
+      Prisma.UserUpdateInput,
+      'class' | 'isNotifyingLessonUpdates' | 'isGettingDailySchedule'
+    >,
   ) {
     return await this.prisma.user.update({ data, where: { id } });
   }

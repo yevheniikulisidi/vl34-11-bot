@@ -1,14 +1,21 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
+import dayjs from 'dayjs';
 import {
   LessonUpdates,
   LessonUpdateType,
 } from 'src/core/schedules/interfaces/lesson-updates.interface';
+import { SchedulesService } from 'src/core/schedules/schedules.service';
+import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { TelegramService } from '../telegram.service';
 
 @Processor('message-distribution')
 export class MessageDistributionConsumer {
-  constructor(private readonly telegramService: TelegramService) {}
+  constructor(
+    private readonly telegramService: TelegramService,
+    private readonly usersRepository: UsersRepository,
+    private readonly schedulesService: SchedulesService,
+  ) {}
 
   @Process('update')
   async onUpdate(job: Job<{ userId: string }>) {
@@ -87,5 +94,75 @@ export class MessageDistributionConsumer {
       `<b>${announcementTitleText}</b>` + '\n\n' + announcementContentText;
 
     await this.telegramService.sendMessage(job.data.userId, announcementText);
+  }
+
+  @Process('daily-schedule')
+  async onDailySchedule(job: Job<{ userId: string }>) {
+    const user = await this.usersRepository.findUser(+job.data.userId);
+
+    if (!user) {
+      return;
+    }
+
+    const today = dayjs().tz('Europe/Kyiv');
+    const scheduleDate = today.format('YYYY-MM-DD');
+    const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+    const schedule = await this.schedulesService.getSchedule(
+      userClass,
+      scheduleDate,
+    );
+
+    if (schedule.length === 0) {
+      const noScheduleText = `📆 Щоденний розклад (${today.format(
+        'DD.MM.YYYY',
+      )})\n\nУроків немає.`;
+
+      await this.telegramService.sendMessage(job.data.userId, noScheduleText);
+
+      return;
+    }
+
+    const dayText = `📆 Щоденний розклад (${today.format('DD.MM.YYYY')})`;
+    const lessonsText = schedule
+      .map((lesson) => {
+        const formattedStartTime = dayjs
+          .utc(lesson.startTime, 'HH:mm')
+          .tz('Europe/Kyiv')
+          .format('H:mm');
+        const formattedEndTime = dayjs
+          .utc(lesson.endTime, 'HH:mm')
+          .tz('Europe/Kyiv')
+          .format('H:mm');
+
+        const formattedLesson =
+          `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
+          `${lesson.subjects
+            .map(
+              (subject) =>
+                `${
+                  subject.meetingUrl
+                    ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                    : `- ${subject.name} (${subject.teacherName})`
+                }`,
+            )
+            .join('\n')}`;
+
+        return formattedLesson;
+      })
+      .join('\n\n');
+
+    const updatedAt = await this.schedulesService.updatedAt(userClass);
+
+    const now = dayjs().utc();
+    const nzProblemsText =
+      updatedAt && now.diff(dayjs(updatedAt), 'minute') >= 10
+        ? `<b>⚠️ Увага! Останнє оновлення розкладу: ${dayjs(updatedAt)
+            .tz('Europe/Kyiv')
+            .format('DD.MM.YYYY о HH:mm')}.</b>`
+        : '';
+
+    const scheduleText = `<b>${dayText}</b>\n\n${lessonsText}\n\n${nzProblemsText}`;
+
+    await this.telegramService.sendMessage(job.data.userId, scheduleText);
   }
 }

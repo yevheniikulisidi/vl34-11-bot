@@ -11,6 +11,7 @@ model User {
   id                       BigInt   @id
   class                    Class?
   isNotifyingLessonUpdates Boolean  @default(true)
+  isGettingDailySchedule   Boolean  @default(true)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }

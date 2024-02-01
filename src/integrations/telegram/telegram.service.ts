@@ -59,6 +59,7 @@ export class TelegramService implements OnModuleInit {
     this.onAdminDistanceEducationCallbackQuery();
     this.onAdminTechnicalWorksCallbackQuery();
     this.onProfileLessonUpdatesCallbackQuery();
+    this.onProfileDailyScheduleCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -494,10 +495,23 @@ export class TelegramService implements OnModuleInit {
         : '❌';
       const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
 
-      const profileKeyboard = new InlineKeyboard()
-        .text(modifyUserClassText, modifyUserClassData)
-        .row()
-        .text(lessonUpdatesText, 'profile:lesson-updates');
+      const dailyScheduleIndicator = user.isGettingDailySchedule ? '✅' : '❌';
+      const dailyScheduleText = `${dailyScheduleIndicator} Щоденний розклад`;
+
+      const profileButtons = [[modifyUserClassText, modifyUserClassData]];
+
+      if (user.class) {
+        profileButtons.push(
+          [lessonUpdatesText, 'profile:lesson-updates'],
+          [dailyScheduleText, 'profile:daily-schedule'],
+        );
+      }
+
+      const profileKeyboard = InlineKeyboard.from(
+        profileButtons.map((button) => {
+          return [InlineKeyboard.text(button[0], button[1])];
+        }),
+      );
 
       await ctx.reply(profileText, {
         parse_mode: 'HTML',
@@ -562,6 +576,17 @@ export class TelegramService implements OnModuleInit {
         await this.usersRepository.updateUser(userId, {
           class: { set: _class },
         });
+
+        if (!user.class) {
+          await this.messageDistributionQueue.add(
+            'daily-schedule',
+            { userId: userId },
+            {
+              jobId: userId,
+              repeat: { cron: '30 7 * * *', tz: 'Europe/Kyiv' },
+            },
+          );
+        }
 
         const setOrChangeUserClassText =
           match[1] === 'set'
@@ -730,6 +755,18 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
+      if (!user.class) {
+        const classesText = 'Спочатку обери свій клас:';
+        const classesKeyboard = new InlineKeyboard()
+          .text('11-А', 'set-user-class:11a')
+          .row()
+          .text('11-Б', 'set-user-class:11b');
+
+        await ctx.reply(classesText, { reply_markup: classesKeyboard });
+
+        return;
+      }
+
       const { isNotifyingLessonUpdates } =
         await this.usersRepository.updateUser(userId, {
           isNotifyingLessonUpdates: !user.isNotifyingLessonUpdates,
@@ -745,10 +782,15 @@ export class TelegramService implements OnModuleInit {
       const lessonUpdatesIndicator = isNotifyingLessonUpdates ? '✅' : '❌';
       const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
 
+      const dailyScheduleIndicator = user.isGettingDailySchedule ? '✅' : '❌';
+      const dailyScheduleText = `${dailyScheduleIndicator} Щоденний розклад`;
+
       const profileKeyboard = new InlineKeyboard()
         .text(modifyUserClassText, modifyUserClassData)
         .row()
-        .text(lessonUpdatesText, 'profile:lesson-updates');
+        .text(lessonUpdatesText, 'profile:lesson-updates')
+        .row()
+        .text(dailyScheduleText, 'profile:daily-schedule');
 
       await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
       await ctx.answerCallbackQuery();
@@ -885,6 +927,86 @@ export class TelegramService implements OnModuleInit {
       );
 
       await ctx.reply('Розсилка успішна ✅');
+    });
+  }
+
+  onProfileDailyScheduleCallbackQuery() {
+    this.bot.callbackQuery('profile:daily-schedule', async (ctx) => {
+      if (!ctx.from) return;
+
+      const userId = ctx.from.id;
+      const user = await this.usersRepository.findUser(userId);
+
+      if (!user) {
+        const mainKeyboard = this.getMainKeyboard(userId);
+
+        await ctx.reply('Створи профіль за допомогою команди /start', {
+          reply_markup: mainKeyboard,
+        });
+
+        return;
+      }
+
+      if (!user.class) {
+        const classesText = 'Спочатку обери свій клас:';
+        const classesKeyboard = new InlineKeyboard()
+          .text('11-А', 'set-user-class:11a')
+          .row()
+          .text('11-Б', 'set-user-class:11b');
+
+        await ctx.reply(classesText, { reply_markup: classesKeyboard });
+
+        return;
+      }
+
+      const { isGettingDailySchedule } = await this.usersRepository.updateUser(
+        userId,
+        {
+          isGettingDailySchedule: !user.isGettingDailySchedule,
+        },
+      );
+
+      if (isGettingDailySchedule) {
+        await this.messageDistributionQueue.add(
+          'daily-schedule',
+          { userId: userId },
+          {
+            jobId: userId,
+            repeat: { cron: '30 7 * * *', tz: 'Europe/Kyiv' },
+          },
+        );
+      } else {
+        await this.messageDistributionQueue.removeRepeatable('daily-schedule', {
+          jobId: userId,
+          cron: '30 7 * * *',
+          tz: 'Europe/Kyiv',
+        });
+      }
+
+      const modifyUserClassText = user.class
+        ? 'Змінити клас'
+        : 'Встановити клас';
+      const modifyUserClassData = user.class
+        ? 'change-user-class'
+        : 'set-user-class';
+
+      const lessonUpdatesIndicator = user.isNotifyingLessonUpdates
+        ? '✅'
+        : '❌';
+      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
+
+      const dailyScheduleIndicator = isGettingDailySchedule ? '✅' : '❌';
+      const dailyScheduleText = `${dailyScheduleIndicator} Щоденний розклад`;
+
+      const profileKeyboard = new InlineKeyboard()
+        .text(modifyUserClassText, modifyUserClassData)
+        .row()
+        .text(lessonUpdatesText, 'profile:lesson-updates')
+        .row()
+        .text(dailyScheduleText, 'profile:daily-schedule');
+
+      await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
+      await ctx.answerCallbackQuery();
     });
   }
 }
