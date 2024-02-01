@@ -166,7 +166,7 @@ export class TelegramService implements OnModuleInit {
           'Четвер',
           "П'ятниця",
         ][i];
-        const isToday = dayDate.isToday();
+        const isToday = now.isSame(dayDate, 'date');
 
         const buttonText = `${dayName}${isToday ? ' (сьогодні)' : ''}`;
         const buttonData = `schedule:${dayDate.format('YYYY-MM-DD')}`;
@@ -191,7 +191,7 @@ export class TelegramService implements OnModuleInit {
 
       if (saturday.length !== 0) {
         const saturdayDate = startOfWeek.day(6);
-        const isToday = saturdayDate.isToday();
+        const isToday = now.isSame(saturdayDate, 'date');
 
         const buttonText = `Субота ${isToday ? ' (сьогодні)' : ''}`;
         const buttonData = `schedule:${saturdayDate.format('YYYY-MM-DD')}`;
@@ -203,7 +203,7 @@ export class TelegramService implements OnModuleInit {
 
       if (sunday.length !== 0) {
         const sundayDate = startOfWeek.day(7);
-        const isToday = sundayDate.isToday();
+        const isToday = now.isSame(sundayDate, 'date');
 
         const buttonText = `Неділя ${isToday ? ' (сьогодні)' : ''}`;
         const buttonData = `schedule:${sundayDate.format('YYYY-MM-DD')}`;
