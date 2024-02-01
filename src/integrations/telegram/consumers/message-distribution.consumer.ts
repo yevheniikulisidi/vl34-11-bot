@@ -30,15 +30,15 @@ export class MessageDistributionConsumer {
       addedLesson: '📚 Додано {{lessonNumber}}-й урок ({{subjectsNames}}).',
       removedLesson: '🗑️ Видалено {{lessonNumber}}-й урок ({{subjectsNames}}).',
       addedSubject:
-        '➕ Додано предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '➕ Додано предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       removedSubject:
-        '➖ Видалено предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '➖ Видалено предмет ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       addedMeetingUrl:
-        '🔗 Додано посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '🔗 Додано посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       updatedMeetingUrl:
-        '🔄 Оновлено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '🔄 Оновлено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
       removedMeetingUrl:
-        '❌ Видалено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку.',
+        '❌ Видалено посилання на конференцію предмета ({{subjectsNames}}) {{lessonNumber}}-го уроку викладачем {{teacherName}}',
     };
 
     const lessonUpdatesText = job.data.lessonUpdates
@@ -52,6 +52,12 @@ export class MessageDistributionConsumer {
             '{{subjectsNames}}',
             lessonUpdate.subjects
               .map((subject) => subject.name.toLowerCase())
+              .join('/'),
+          )
+          .replace(
+            '{{teacherName}}',
+            lessonUpdate.subjects
+              .map((subject) => subject.teacherName)
               .join('/'),
           );
 
