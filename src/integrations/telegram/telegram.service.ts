@@ -345,9 +345,48 @@ export class TelegramService implements OnModuleInit {
 
             let formattedLesson = '';
 
-            if ((isDistanceEducation && isOnlineLesson && isNow) || isNow) {
+            if (isDistanceEducation && isOnlineLesson && isNow) {
               formattedLesson =
                 `<b>${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})</b>\n` +
+                `${lesson.subjects
+                  .map(
+                    (subject) =>
+                      `${
+                        subject.meetingUrl
+                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                          : `- ${subject.name} (${subject.teacherName})`
+                      }`,
+                  )
+                  .join('\n')}`;
+            } else if (isDistanceEducation && !isOnlineLesson) {
+              formattedLesson =
+                `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
+                `${lesson.subjects
+                  .map(
+                    (subject) =>
+                      `${
+                        subject.meetingUrl
+                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                          : `- ${subject.name} (${subject.teacherName})`
+                      }`,
+                  )
+                  .join('\n')}`;
+            } else if (!isDistanceEducation && isNow) {
+              formattedLesson =
+                `<b>${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})</b>\n` +
+                `${lesson.subjects
+                  .map(
+                    (subject) =>
+                      `${
+                        subject.meetingUrl
+                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
+                          : `- ${subject.name} (${subject.teacherName})`
+                      }`,
+                  )
+                  .join('\n')}`;
+            } else if (!isDistanceEducation && !isNow) {
+              formattedLesson =
+                `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
                 `${lesson.subjects
                   .map(
                     (subject) =>
