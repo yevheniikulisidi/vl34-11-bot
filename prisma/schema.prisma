@@ -9,7 +9,7 @@ datasource db {
 
 model User {
   id                       BigInt   @id
-  class                    Class?
+  class                    Class
   isNotifyingLessonUpdates Boolean  @default(true)
   isGettingDailySchedule   Boolean  @default(false)
   createdAt                DateTime @default(now())

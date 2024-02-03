@@ -117,4 +117,15 @@ export class SchedulesService implements OnModuleInit {
 
     return data;
   }
+
+  async findSchedule(
+    scheduleClass: '11a' | '11b',
+    scheduleDate: string,
+  ): Promise<ScheduleLesson[]> {
+    const schedule = await this.redis.get(
+      `${scheduleClass}:schedule:${scheduleDate}`,
+    );
+
+    return schedule ? JSON.parse(schedule) : [];
+  }
 }

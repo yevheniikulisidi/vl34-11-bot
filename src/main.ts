@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import 'dayjs/locale/uk';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import isToday from 'dayjs/plugin/isToday';
