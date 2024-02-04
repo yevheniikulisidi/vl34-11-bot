@@ -64,6 +64,62 @@ schedule-keyboard =
   }
   .next-monday = Наступний понеділок
 
+no-schedule-lessons = { $weekdayName ->
+  [monday] Розклад на понеділок порожній.
+  [tuesday] Розклад на вівторок порожній.
+  [wednesday] Розклад на середу порожній.
+  [thursday] Розклад на четвер порожній.
+  [friday] Розклад на п'ятницю порожній.
+  [saturday] Розклад на суботу порожній.
+  [sunday] Розклад на неділю порожній.
+  *[next-monday] Розклад на наступний понеділок порожній.
+}
+schedule-lessons-text =
+  .lesson = { $lessonNumber }-й урок ({ $lessonStartTime } - { $lessonEndTime })
+  .lesson-bold = <b>{ $lessonNumber }-й урок ({ $lessonStartTime } - { $lessonEndTime })</b>
+  .subject = { $isSubjectMeetingUrl ->
+    [true] <a href="{ $subjectMeetingUrl }">- { $subjectName } ({ $subjectTeacherName })</a>
+    *[false] - { $subjectName } ({ $subjectTeacherName })
+  }
+  .dfsdf  = https://dsfsdfds.com
+  .lessons-result =
+    { $scheduleLessonText }
+    { $scheduleLessonSujectsText }
+  .result =
+  <b>{ $weekdayName ->
+    [monday] { $isToday ->
+      [true] Понеділок (сьогодні)
+      *[false] Понеділок ({ $weekdayDate })
+    }
+    [tuesday] { $isToday ->
+      [true] Вівторок (сьогодні)
+      *[false] Вівторок ({ $weekdayDate })
+    }
+    [wednesday] { $isToday ->
+      [true] Середа (сьогодні)
+      *[false] Середа ({ $weekdayDate })
+    }
+    [thursday] { $isToday ->
+      [true] Четвер (сьогодні)
+      *[false] Четвер ({ $weekdayDate })
+    }
+    [friday] { $isToday ->
+      [true] П'ятниця (сьогодні)
+      *[false] П'ятниця ({ $weekdayDate })
+    }
+    [saturday] { $isToday ->
+      [true] Субота (сьогодні)
+      *[false] Субота ({ $weekdayDate })
+    }
+    [sunday] { $isToday ->
+      [true] Неділя (сьогодні)
+      *[false] Неділя ({ $weekdayDate })
+    }
+    *[next-monday] Наступний понеділок (завтра)
+    }</b>
+
+  { $scheduleLessonsText }
+
 profile-text =
   <b>Профіль</b>
   ID: <code>{ $id }</code>

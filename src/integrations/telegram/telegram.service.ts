@@ -3,22 +3,22 @@ import { hydrateReply, parseMode } from '@grammyjs/parse-mode';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { User } from '@prisma/client';
 import { Queue } from 'bull';
 import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
 import { join } from 'path';
 import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
+import { ScheduleLesson } from 'src/core/schedules/interfaces/schedule.interface';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { MyContext } from './types/my-context.type';
-import { User } from '@prisma/client';
 
 @Injectable()
 export class TelegramService implements OnModuleInit {
   private readonly logger = new Logger(TelegramService.name);
   private readonly bot: Bot<MyContext>;
-  private readonly superAdminId: number;
 
   constructor(
     @InjectQueue('message-distribution')
@@ -37,10 +37,6 @@ export class TelegramService implements OnModuleInit {
         environment: clientEnvironment === 'production' ? 'prod' : 'test',
       },
     });
-
-    this.superAdminId = +configService.getOrThrow<number>(
-      'TELEGRAM_SUPER_ADMIN_ID',
-    );
   }
 
   onModuleInit() {
@@ -55,13 +51,17 @@ export class TelegramService implements OnModuleInit {
 
     this.bot.use(i18n);
 
+    // Starting functions
     this.onStartCommand();
     this.onInfoCommand();
     this.onStartButton();
     this.onSpecifyClassCallbackQuery();
 
-    // this.onScheduleButton();
+    // Schedule functions
+    this.onScheduleButton();
+    this.onScheduleCallbackQuery();
 
+    // Profile functions
     this.onProfileButton();
     this.onProfileChangeClassCallbackQuery();
     this.onProfileLessonUpdatesCallbackQuery();
@@ -155,13 +155,13 @@ export class TelegramService implements OnModuleInit {
           id: true,
         });
 
-        const _class = ctx.match[1] === '11a' ? 'CLASS_11A' : 'CLASS_11B';
+        const userClass = ctx.match[1] === '11a' ? 'CLASS_11A' : 'CLASS_11B';
 
         if (!user) {
           const createdUser = await this.usersRepository.createUser(
             {
               id: ctx.from.id,
-              class: _class,
+              class: userClass,
             },
             { class: true },
           );
@@ -189,104 +189,314 @@ export class TelegramService implements OnModuleInit {
       });
   }
 
-  // private onScheduleButton() {
-  //   this.bot
-  //     .chatType('private')
-  //     .filter(hears('buttons.schedule'), async (ctx) => {
-  //       const user = await this.usersRepository.findUser(ctx.from.id, {
-  //         class: true,
-  //       });
+  private onScheduleButton() {
+    this.bot
+      .chatType('private')
+      .filter(hears('buttons.schedule'), async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          class: true,
+        });
 
-  //       if (!user) return;
+        if (!user) return;
 
-  //       const currentWeekStart = dayjs.utc().tz('Europe/Kyiv').startOf('week');
-  //       const nextWeekStart = currentWeekStart.add(1, 'week').startOf('week');
-  //       const weekdays = [
-  //         'monday',
-  //         'tuesday',
-  //         'wednesday',
-  //         'thursday',
-  //         'friday',
-  //       ];
-  //       const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+        const currentWeekStart = dayjs
+          .utc()
+          .tz('Europe/Kyiv')
+          .locale('uk', { weekStart: 1 })
+          .startOf('week');
+        const nextWeekStart = currentWeekStart.add(1, 'week').startOf('week');
+        const weekdays = [
+          'monday',
+          'tuesday',
+          'wednesday',
+          'thursday',
+          'friday',
+        ];
+        const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
 
-  //       const createKeyboardRow = (
-  //         weekdayName: string,
-  //         weekdayNumber: number,
-  //         isToday: boolean,
-  //       ) => {
-  //         return [
-  //           InlineKeyboard.text(
-  //             ctx.t(`schedule-keyboard.${weekdayName}`, {
-  //               isToday: String(isToday),
-  //             }),
-  //             `schedule:${currentWeekStart
-  //               .day(weekdayNumber)
-  //               .format('YYYY-MM-DD')}`,
-  //           ),
-  //         ];
-  //       };
+        const createKeyboardRow = (
+          weekdayName: string,
+          weekdayNumber: number,
+          isToday: boolean,
+        ) => {
+          return [
+            InlineKeyboard.text(
+              ctx.t(`schedule-keyboard.${weekdayName}`, {
+                isToday: String(isToday),
+              }),
+              `schedule:${currentWeekStart
+                .day(weekdayNumber)
+                .format('YYYY-MM-DD')}`,
+            ),
+          ];
+        };
 
-  //       const keyboard = InlineKeyboard.from(
-  //         weekdays.map((weekdayName: string, weekdayNumber: number) =>
-  //           createKeyboardRow(
-  //             weekdayName,
-  //             weekdayNumber + 1,
-  //             currentWeekStart.day(weekdayNumber).isToday(),
-  //           ),
-  //         ),
-  //       );
+        const keyboard = InlineKeyboard.from(
+          weekdays.map((weekdayName: string, weekdayNumber: number) =>
+            createKeyboardRow(
+              weekdayName,
+              weekdayNumber + 1,
+              currentWeekStart.day(weekdayNumber).isToday(),
+            ),
+          ),
+        );
 
-  //       const addSpecialDays = (
-  //         weekdayName: string,
-  //         weekdayNumber: number,
-  //         scheduleLessons: ScheduleLesson[],
-  //       ) => {
-  //         if (scheduleLessons.length > 0) {
-  //           keyboard.row(
-  //             InlineKeyboard.text(
-  //               ctx.t(`schedule-keyboard.${weekdayName}`, {
-  //                 isToday: String(
-  //                   currentWeekStart.day(weekdayNumber).isToday(),
-  //                 ),
-  //               }),
-  //               `schedule:${currentWeekStart
-  //                 .day(weekdayNumber)
-  //                 .format('YYYY-MM-DD')}`,
-  //             ),
-  //           );
-  //         }
-  //       };
+        const addSpecialDays = (
+          weekdayName: string,
+          weekdayNumber: number,
+          scheduleLessons: ScheduleLesson[],
+        ) => {
+          if (scheduleLessons.length > 0) {
+            keyboard.row(
+              InlineKeyboard.text(
+                ctx.t(`schedule-keyboard.${weekdayName}`, {
+                  isToday: String(
+                    currentWeekStart.day(weekdayNumber).isToday(),
+                  ),
+                }),
+                `schedule:${currentWeekStart
+                  .day(weekdayNumber)
+                  .format('YYYY-MM-DD')}`,
+              ),
+            );
+          }
+        };
 
-  //       addSpecialDays(
-  //         'saturday',
-  //         6,
-  //         await this.schedulesService.findSchedule(
-  //           scheduleClass,
-  //           currentWeekStart.day(6).format('YYYY-MM-DD'),
-  //         ),
-  //       );
-  //       addSpecialDays(
-  //         'sunday',
-  //         7,
-  //         await this.schedulesService.findSchedule(
-  //           scheduleClass,
-  //           currentWeekStart.day(7).format('YYYY-MM-DD'),
-  //         ),
-  //       );
+        addSpecialDays(
+          'saturday',
+          6,
+          await this.schedulesService.findScheduleLessons(
+            scheduleClass,
+            currentWeekStart.day(6).format('YYYY-MM-DD'),
+          ),
+        );
+        addSpecialDays(
+          'sunday',
+          7,
+          await this.schedulesService.findScheduleLessons(
+            scheduleClass,
+            currentWeekStart.day(7).format('YYYY-MM-DD'),
+          ),
+        );
 
-  //       if (currentWeekStart.day(7).isToday()) {
-  //         keyboard.row(
-  //           InlineKeyboard.text(
-  //             ctx.t('schedule-keyboard.next-monday'),
-  //             `schedule:${nextWeekStart.day(1).format('YYYY-MM-DD')}`,
-  //           ),
-  //         );
-  //       }
+        if (currentWeekStart.day(7).isToday()) {
+          keyboard.row(
+            InlineKeyboard.text(
+              ctx.t('schedule-keyboard.next-monday'),
+              `schedule:${nextWeekStart.day(1).format('YYYY-MM-DD')}`,
+            ),
+          );
+        }
 
-  //       await ctx.reply(ctx.t('schedule-text'), { reply_markup: keyboard });
-  //     });
-  // }
+        await ctx.reply(ctx.t('schedule-text'), { reply_markup: keyboard });
+      });
+  }
+
+  private onScheduleCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery(/^schedule:(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          class: true,
+        });
+
+        if (!user) {
+          await ctx.answerCallbackQuery();
+          return;
+        }
+
+        const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+        const scheduleDate = dayjs.utc(ctx.match[1]).tz('Europe/Kyiv');
+        const scheduleLessons = await this.schedulesService.findScheduleLessons(
+          scheduleClass,
+          scheduleDate.format('YYYY-MM-DD'),
+        );
+
+        const nextMondayDate = dayjs
+          .utc()
+          .tz('Europe/Kyiv')
+          .locale('uk', { weekStart: 1 })
+          .startOf('week')
+          .add(1, 'week')
+          .startOf('week')
+          .format('YYYY-MM-DD');
+        const isNextMonday =
+          scheduleDate.format('YYYY-MM-DD') === nextMondayDate;
+
+        if (!scheduleLessons.length) {
+          await ctx.answerCallbackQuery(
+            ctx.t('no-schedule-lessons', {
+              weekdayName: isNextMonday
+                ? 'next-monday'
+                : scheduleDate.format('dddd').toLocaleLowerCase(),
+            }),
+          );
+          return;
+        }
+
+        const settings =
+          (await this.settingsRepository.findSettings({
+            isDistanceEducation: true,
+          })) ||
+          (await this.settingsRepository.createSettings({
+            isDistanceEducation: true,
+          }));
+
+        const scheduleLessonsText = this.scheduleLessonsText(
+          ctx,
+          scheduleDate.format('YYYY-MM-DD'),
+          scheduleLessons,
+          settings.isDistanceEducation,
+        );
+
+        const updatedAtSchedule =
+          await this.schedulesService.getUpdatedAtSchedule(scheduleClass);
+
+        const isNzProblems = updatedAtSchedule
+          ? dayjs.utc().diff(dayjs.utc(updatedAtSchedule), 'minute') >= 10
+          : null;
+
+        const analytics = await this.analyticsRepository.findAnalytics(
+          user.class,
+          scheduleDate.toISOString(),
+        );
+
+        if (!analytics) {
+          await this.analyticsRepository.createAnalytics(
+            user.class,
+            scheduleDate.toISOString(),
+          );
+        } else {
+          await this.analyticsRepository.updateAnalytics(
+            user.class,
+            scheduleDate.toISOString(),
+          );
+        }
+
+        const lastUpdatedAtSchedule = dayjs
+          .utc(updatedAtSchedule)
+          .tz('Europe/Kyiv')
+          .locale('uk')
+          .format('DD.MM.YYYY о HH:mm');
+        const nzProblemsText = isNzProblems
+          ? `\n\n<b>⚠️ Увага! Розклад оновлено ${lastUpdatedAtSchedule}!</b>`
+          : '';
+
+        await ctx.editMessageText(
+          ctx.t('schedule-lessons-text.result', {
+            weekdayName: isNextMonday
+              ? 'next-monday'
+              : scheduleDate.format('dddd').toLocaleLowerCase(),
+            isToday: String(scheduleDate.isToday()),
+            weekdayDate: scheduleDate.format('DD.MM.YYYY'),
+            scheduleLessonsText,
+          }) + nzProblemsText,
+          { link_preview_options: { is_disabled: true } },
+        );
+        await ctx.answerCallbackQuery();
+      });
+  }
+
+  private scheduleLessonsText(
+    ctx: MyContext,
+    scheduleDate: string,
+    scheduleLessons: ScheduleLesson[],
+    isDistanceEducation: boolean,
+  ) {
+    return scheduleLessons
+      .map((scheduleLesson) => {
+        const isOnlineLesson = scheduleLesson.subjects.some(
+          (scheduleLessonSubject) => scheduleLessonSubject.meetingUrl !== null,
+        );
+
+        const scheduleLessonStartTime = dayjs.utc(
+          `${scheduleDate} ${scheduleLesson.startTime}`,
+          'YYYY-MM-DD HH:mm',
+        );
+        const scheduleLessonEndTime = dayjs.utc(
+          `${scheduleDate} ${scheduleLesson.endTime}`,
+          'YYYY-MM-DD HH:mm',
+        );
+        const isNow = dayjs()
+          .utc()
+          .isBetween(
+            scheduleLessonStartTime,
+            scheduleLessonEndTime,
+            null,
+            '[]',
+          );
+
+        let scheduleLessonText;
+
+        const scheduleLessonSujectsText = scheduleLesson.subjects
+          .map((scheduleLessonSubject) => {
+            const scheduleLessonSujectText = scheduleLessonSubject.meetingUrl
+              ? `<a href="${scheduleLessonSubject.meetingUrl}">- ${scheduleLessonSubject.name} (${scheduleLessonSubject.teacherName})</a>`
+              : `- ${scheduleLessonSubject.name} (${scheduleLessonSubject.teacherName})`;
+
+            return scheduleLessonSujectText;
+          })
+          .join('\n');
+
+        if (isDistanceEducation && isOnlineLesson && isNow) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson-bold', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else if (isDistanceEducation && !isOnlineLesson) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else if (!isDistanceEducation && isNow) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson-bold', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else if (!isDistanceEducation && !isNow) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        }
+
+        return ctx.t('schedule-lessons-text.lessons-result', {
+          scheduleLessonText,
+          scheduleLessonSujectsText,
+        });
+      })
+      .join('\n\n');
+  }
 
   private onProfileButton() {
     this.bot
