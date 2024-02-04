@@ -444,7 +444,7 @@ export class TelegramService implements OnModuleInit {
             lessonStartTime: scheduleLessonStartTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
-            lessonEndTime: scheduleLessonStartTime
+            lessonEndTime: scheduleLessonEndTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
           });
@@ -454,7 +454,7 @@ export class TelegramService implements OnModuleInit {
             lessonStartTime: scheduleLessonStartTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
-            lessonEndTime: scheduleLessonStartTime
+            lessonEndTime: scheduleLessonEndTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
           });
@@ -464,7 +464,7 @@ export class TelegramService implements OnModuleInit {
             lessonStartTime: scheduleLessonStartTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
-            lessonEndTime: scheduleLessonStartTime
+            lessonEndTime: scheduleLessonEndTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
           });
@@ -474,7 +474,7 @@ export class TelegramService implements OnModuleInit {
             lessonStartTime: scheduleLessonStartTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
-            lessonEndTime: scheduleLessonStartTime
+            lessonEndTime: scheduleLessonEndTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
           });
@@ -484,7 +484,7 @@ export class TelegramService implements OnModuleInit {
             lessonStartTime: scheduleLessonStartTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
-            lessonEndTime: scheduleLessonStartTime
+            lessonEndTime: scheduleLessonEndTime
               .tz('Europe/Kyiv')
               .format('H:mm'),
           });
