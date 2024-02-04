@@ -6,12 +6,15 @@ import { PrismaService } from 'src/database/prisma.service';
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findUser(id: number | bigint) {
-    return await this.prisma.user.findUnique({ where: { id } });
+  async findUser(id: number, select?: Prisma.UserSelect) {
+    return await this.prisma.user.findUnique({ where: { id }, select });
   }
 
-  async createUser(data: Pick<Prisma.UserCreateInput, 'id'>) {
-    return await this.prisma.user.create({ data });
+  async createUser(
+    data: Pick<Prisma.UserCreateInput, 'id' | 'class'>,
+    select?: Prisma.UserSelect,
+  ) {
+    return await this.prisma.user.create({ data, select });
   }
 
   async updateUser(
@@ -20,15 +23,15 @@ export class UsersRepository {
       Prisma.UserUpdateInput,
       'class' | 'isNotifyingLessonUpdates' | 'isGettingDailySchedule'
     >,
+    select?: Prisma.UserSelect,
   ) {
-    return await this.prisma.user.update({ data, where: { id } });
+    return await this.prisma.user.update({ data, where: { id }, select });
   }
 
   async countClassesUsers() {
     return this.prisma.$transaction([
       this.prisma.user.count({ where: { class: 'CLASS_11A' } }),
       this.prisma.user.count({ where: { class: 'CLASS_11B' } }),
-      this.prisma.user.count({ where: { class: null } }),
       this.prisma.user.count(),
     ]);
   }
@@ -47,7 +50,6 @@ export class UsersRepository {
   async findUsersWithIdAndClass() {
     return await this.prisma.user.findMany({
       select: { id: true, class: true },
-      where: { class: { not: null } },
     });
   }
 }

@@ -1,20 +1,24 @@
+import { I18n, hears } from '@grammyjs/i18n';
+import { hydrateReply, parseMode } from '@grammyjs/parse-mode';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Class } from '@prisma/client';
+import { User } from '@prisma/client';
 import { Queue } from 'bull';
 import dayjs from 'dayjs';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
+import { join } from 'path';
 import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
+import { ScheduleLesson } from 'src/core/schedules/interfaces/schedule.interface';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
+import { MyContext } from './types/my-context.type';
 
 @Injectable()
 export class TelegramService implements OnModuleInit {
   private readonly logger = new Logger(TelegramService.name);
-  private readonly bot: Bot;
-  private readonly superAdminId: number;
+  private readonly bot: Bot<MyContext>;
 
   constructor(
     @InjectQueue('message-distribution')
@@ -28,36 +32,38 @@ export class TelegramService implements OnModuleInit {
     const token = this.configService.getOrThrow<string>('TELEGRAM_BOT_TOKEN');
     const clientEnvironment = this.configService.getOrThrow<string>('NODE_ENV');
 
-    this.bot = new Bot(token, {
+    this.bot = new Bot<MyContext>(token, {
       client: {
         environment: clientEnvironment === 'production' ? 'prod' : 'test',
       },
     });
-
-    this.superAdminId = +configService.getOrThrow<number>(
-      'TELEGRAM_SUPER_ADMIN_ID',
-    );
   }
 
   onModuleInit() {
-    // Commands
+    this.bot.use(hydrateReply);
+
+    this.bot.api.config.use(parseMode('HTML'));
+
+    const i18n = new I18n<MyContext>({
+      defaultLocale: 'uk',
+      directory: join(__dirname, 'locales'),
+    });
+
+    this.bot.use(i18n);
+
+    // Starting functions
     this.onStartCommand();
-    this.onUpdateCommand();
-    this.onAnnouncementCommand();
+    this.onInfoCommand();
+    this.onStartButton();
+    this.onSpecifyClassCallbackQuery();
 
-    // Texts
-    this.onProfileText();
-    this.onScheduleText();
-    this.onAdminText();
-
-    // Callback queries
-    this.onModifyUserClassCallbackQuery();
-    this.onSetOrChangeUserClassCallbackQuery();
+    // Schedule functions
+    this.onScheduleButton();
     this.onScheduleCallbackQuery();
-    this.onAdminUsersCallbackQuery();
-    this.onAdminAnalyticsCallbackQuery();
-    this.onAdminDistanceEducationCallbackQuery();
-    this.onAdminTechnicalWorksCallbackQuery();
+
+    // Profile functions
+    this.onProfileButton();
+    this.onProfileChangeClassCallbackQuery();
     this.onProfileLessonUpdatesCallbackQuery();
     this.onProfileDailyScheduleCallbackQuery();
 
@@ -81,753 +87,625 @@ export class TelegramService implements OnModuleInit {
     });
   }
 
-  onStartCommand() {
-    this.bot.command('start', async (ctx) => {
-      if (!ctx.from) return;
+  private onStartCommand() {
+    this.bot.chatType('private').command('start', async (ctx) => {
+      const user = await this.usersRepository.findUser(ctx.from.id, {
+        id: true,
+      });
 
-      const userId = ctx.from.id;
-
-      const welcomeText =
-        'Привіт! Тут для тебе: розклад, конференції — все швидко та легко! 🚀';
-      const mainKeyboard = this.getMainKeyboard(userId);
-
-      await ctx.reply(welcomeText, { reply_markup: mainKeyboard });
-
-      const user = await this.usersRepository.findUser(userId);
+      let keyboard;
 
       if (!user) {
-        await this.usersRepository.createUser({ id: userId });
+        keyboard = Keyboard.from([[Keyboard.text(ctx.t('buttons.start'))]])
+          .oneTime()
+          .resized();
+      } else {
+        keyboard = Keyboard.from([
+          [
+            Keyboard.text(ctx.t('buttons.schedule')),
+            Keyboard.text(ctx.t('buttons.profile')),
+          ],
+        ]).resized();
+      }
+
+      await ctx.reply(ctx.t('start-text'), { reply_markup: keyboard });
+    });
+  }
+
+  private onInfoCommand() {
+    this.bot.chatType('private').command('info', async (ctx) => {
+      await ctx.reply(ctx.t('info-text'));
+    });
+  }
+
+  private onStartButton() {
+    this.bot.chatType('private').filter(hears('buttons.start'), async (ctx) => {
+      const user = await this.usersRepository.findUser(ctx.from.id, {
+        id: true,
+      });
+
+      if (!user) {
+        const specifyClassKeyboard = InlineKeyboard.from([
+          [
+            InlineKeyboard.text(
+              ctx.t('specify-class-keyboard.class-11a'),
+              'specify-class:11a',
+            ),
+          ],
+          [
+            InlineKeyboard.text(
+              ctx.t('specify-class-keyboard.class-11b'),
+              'specify-class:11b',
+            ),
+          ],
+        ]);
+
+        await ctx.reply(ctx.t('specify-class-text'), {
+          reply_markup: specifyClassKeyboard,
+        });
       }
     });
   }
 
-  getMainKeyboard(userId: number | bigint) {
-    const keyboard = new Keyboard()
-      .text('📅 Розклад')
-      .text('👤 Профіль')
-      .row()
-      .resized();
-
-    if (this.superAdminId === userId) {
-      keyboard.text('🔧 Адміністратор');
-    }
-
-    return keyboard;
-  }
-
-  onScheduleText() {
-    this.bot.hears('📅 Розклад', async (ctx) => {
-      const settings = await this.settingsRepository.findSettings();
-      const { isTechnicalWorks } =
-        settings || (await this.settingsRepository.createSettings());
-
-      if (isTechnicalWorks) {
-        await ctx.reply('🛠 Технічні роботи');
-        return;
-      }
-
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-      const user = await this.usersRepository.findUser(userId);
-
-      if (!user) {
-        const mainKeyboard = this.getMainKeyboard(userId);
-
-        await ctx.reply('Створи профіль за допомогою команди /start', {
-          reply_markup: mainKeyboard,
+  private onSpecifyClassCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery(/^specify-class:(11a|11b)$/, async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          id: true,
         });
 
-        return;
-      }
-
-      if (!user.class) {
-        const classesText = 'Спочатку обери свій клас:';
-        const classesKeyboard = new InlineKeyboard()
-          .text('11-А', 'set-user-class:11a')
-          .row()
-          .text('11-Б', 'set-user-class:11b');
-
-        await ctx.reply(classesText, { reply_markup: classesKeyboard });
-
-        return;
-      }
-
-      const scheduleText = 'Вибери день тижня:';
-      const now = dayjs().tz('Europe/Kyiv').locale('uk', { weekStart: 1 });
-      const startOfWeek = now.startOf('week');
-      const scheduleKeyboardButtons = [];
-
-      for (let i = 0; i < 5; i++) {
-        const dayDate = startOfWeek.add(i, 'day');
-        const dayName = [
-          'Понеділок',
-          'Вівторок',
-          'Середа',
-          'Четвер',
-          "П'ятниця",
-        ][i];
-        const isToday = now.isSame(dayDate, 'date');
-
-        const buttonText = `${dayName}${isToday ? ' (сьогодні)' : ''}`;
-        const buttonData = `schedule:${dayDate.format('YYYY-MM-DD')}`;
-
-        scheduleKeyboardButtons.push([
-          InlineKeyboard.text(buttonText, buttonData),
-        ]);
-      }
-
-      const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
-
-      const [saturday, sunday] = await Promise.all([
-        this.schedulesService.getSchedule(
-          userClass,
-          startOfWeek.day(6).format('YYYY-MM-DD'),
-        ),
-        this.schedulesService.getSchedule(
-          userClass,
-          startOfWeek.day(7).format('YYYY-MM-DD'),
-        ),
-      ]);
-
-      if (saturday.length !== 0) {
-        const saturdayDate = startOfWeek.day(6);
-        const isToday = now.isSame(saturdayDate, 'date');
-
-        const buttonText = `Субота ${isToday ? ' (сьогодні)' : ''}`;
-        const buttonData = `schedule:${saturdayDate.format('YYYY-MM-DD')}`;
-
-        scheduleKeyboardButtons.push([
-          InlineKeyboard.text(buttonText, buttonData),
-        ]);
-      }
-
-      if (sunday.length !== 0) {
-        const sundayDate = startOfWeek.day(7);
-        const isToday = now.isSame(sundayDate, 'date');
-
-        const buttonText = `Неділя ${isToday ? ' (сьогодні)' : ''}`;
-        const buttonData = `schedule:${sundayDate.format('YYYY-MM-DD')}`;
-
-        scheduleKeyboardButtons.push([
-          InlineKeyboard.text(buttonText, buttonData),
-        ]);
-      }
-
-      if (now.day() === 0) {
-        const startOfNextWeek = now.add(1, 'week').startOf('week');
-
-        const buttonText = 'Наступний понеділок';
-        const buttonData = `schedule:${startOfNextWeek.format('YYYY-MM-DD')}`;
-
-        scheduleKeyboardButtons.push([
-          InlineKeyboard.text(buttonText, buttonData),
-        ]);
-      }
-
-      const scheduleKeyboard = InlineKeyboard.from(scheduleKeyboardButtons);
-
-      await ctx.reply(scheduleText, { reply_markup: scheduleKeyboard });
-    });
-  }
-
-  onScheduleCallbackQuery() {
-    this.bot.callbackQuery(
-      /^schedule:([0-9]{4}-[0-9]{2}-[0-9]{2})$/,
-      async (ctx) => {
-        const settings = await this.settingsRepository.findSettings();
-        const { isDistanceEducation, isTechnicalWorks } =
-          settings || (await this.settingsRepository.createSettings());
-
-        if (isTechnicalWorks) {
-          await ctx.editMessageText('🛠 Технічні роботи');
-          return;
-        }
-
-        if (!ctx.from) return;
-
-        const userId = ctx.from.id;
-        const user = await this.usersRepository.findUser(userId);
+        const userClass = ctx.match[1] === '11a' ? 'CLASS_11A' : 'CLASS_11B';
 
         if (!user) {
-          const mainKeyboard = this.getMainKeyboard(userId);
+          const createdUser = await this.usersRepository.createUser(
+            {
+              id: ctx.from.id,
+              class: userClass,
+            },
+            { class: true },
+          );
 
-          await ctx.reply('Створи профіль за допомогою команди /start', {
-            reply_markup: mainKeyboard,
+          await ctx.editMessageText(
+            ctx.t('modified-class-text', {
+              action: 'specify',
+              class: createdUser.class,
+            }),
+          );
+
+          const keyboard = Keyboard.from([
+            [
+              Keyboard.text(ctx.t('buttons.schedule')),
+              Keyboard.text(ctx.t('buttons.profile')),
+            ],
+          ]).resized();
+
+          await ctx.reply(ctx.t('modified-class-text2'), {
+            reply_markup: keyboard,
           });
-
-          return;
         }
 
-        if (!user.class) {
-          const classesText = 'Спочатку обери свій клас:';
-          const classesKeyboard = new InlineKeyboard()
-            .text('11-А', 'set-user-class:11a')
-            .row()
-            .text('11-Б', 'set-user-class:11b');
+        await ctx.answerCallbackQuery();
+      });
+  }
 
-          await ctx.reply(classesText, { reply_markup: classesKeyboard });
+  private onScheduleButton() {
+    this.bot
+      .chatType('private')
+      .filter(hears('buttons.schedule'), async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          class: true,
+        });
 
-          return;
-        }
+        if (!user) return;
 
-        const scheduleDate = ctx.match[1];
-        const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
-        const schedule = await this.schedulesService.getSchedule(
-          userClass,
-          scheduleDate,
+        const currentWeekStart = dayjs
+          .utc()
+          .tz('Europe/Kyiv')
+          .locale('uk', { weekStart: 1 })
+          .startOf('week');
+        const nextWeekStart = currentWeekStart.add(1, 'week').startOf('week');
+        const weekdays = [
+          'monday',
+          'tuesday',
+          'wednesday',
+          'thursday',
+          'friday',
+        ];
+        const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+
+        const createKeyboardRow = (
+          weekdayName: string,
+          weekdayNumber: number,
+          isToday: boolean,
+        ) => {
+          return [
+            InlineKeyboard.text(
+              ctx.t(`schedule-keyboard.${weekdayName}`, {
+                isToday: String(isToday),
+              }),
+              `schedule:${currentWeekStart
+                .day(weekdayNumber)
+                .format('YYYY-MM-DD')}`,
+            ),
+          ];
+        };
+
+        const keyboard = InlineKeyboard.from(
+          weekdays.map((weekdayName: string, weekdayNumber: number) =>
+            createKeyboardRow(
+              weekdayName,
+              weekdayNumber + 1,
+              currentWeekStart.day(weekdayNumber).isToday(),
+            ),
+          ),
         );
 
-        const dayDate = dayjs(scheduleDate)
-          .tz('Europe/Kyiv')
-          .locale('uk', { weekStart: 1 });
+        const addSpecialDays = (
+          weekdayName: string,
+          weekdayNumber: number,
+          scheduleLessons: ScheduleLesson[],
+        ) => {
+          if (scheduleLessons.length > 0) {
+            keyboard.row(
+              InlineKeyboard.text(
+                ctx.t(`schedule-keyboard.${weekdayName}`, {
+                  isToday: String(
+                    currentWeekStart.day(weekdayNumber).isToday(),
+                  ),
+                }),
+                `schedule:${currentWeekStart
+                  .day(weekdayNumber)
+                  .format('YYYY-MM-DD')}`,
+              ),
+            );
+          }
+        };
 
-        if (schedule.length === 0) {
-          const dayNumber = dayjs(scheduleDate).day();
-          const dayName = [
-            'неділю',
-            'понеділок',
-            'вівторок',
-            'середу',
-            'четвер',
-            "п'ятницю",
-            'суботу',
-          ][dayNumber];
+        addSpecialDays(
+          'saturday',
+          6,
+          await this.schedulesService.findScheduleLessons(
+            scheduleClass,
+            currentWeekStart.day(6).format('YYYY-MM-DD'),
+          ),
+        );
+        addSpecialDays(
+          'sunday',
+          7,
+          await this.schedulesService.findScheduleLessons(
+            scheduleClass,
+            currentWeekStart.day(7).format('YYYY-MM-DD'),
+          ),
+        );
 
-          const noScheduleText = `Розклад на ${dayName} (${dayDate.format(
-            'DD.MM.YYYY',
-          )}) порожній.`;
+        if (currentWeekStart.day(7).isToday()) {
+          keyboard.row(
+            InlineKeyboard.text(
+              ctx.t('schedule-keyboard.next-monday'),
+              `schedule:${nextWeekStart.day(1).format('YYYY-MM-DD')}`,
+            ),
+          );
+        }
 
-          await ctx.editMessageText(noScheduleText);
+        await ctx.reply(ctx.t('schedule-text'), { reply_markup: keyboard });
+      });
+  }
+
+  private onScheduleCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery(/^schedule:(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          class: true,
+        });
+
+        if (!user) {
           await ctx.answerCallbackQuery();
-
           return;
         }
 
-        const dayNumber2 = dayjs(scheduleDate).day();
-        const dayName2 = [
-          'Неділя',
-          'Понеділок',
-          'Вівторок',
-          'Середа',
-          'Четвер',
-          "П'ятниця",
-          'Субота',
-        ][dayNumber2];
+        const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+        const scheduleDate = dayjs.utc(ctx.match[1]).tz('Europe/Kyiv');
+        const scheduleLessons = await this.schedulesService.findScheduleLessons(
+          scheduleClass,
+          scheduleDate.format('YYYY-MM-DD'),
+        );
 
-        const dayText = `${
-          dayDate.isToday()
-            ? `${dayName2} (сьогодні)`
-            : `${dayName2} (${dayDate.format('DD.MM.YYYY')})`
-        }`;
-        const lessonsText = schedule
-          .map((lesson) => {
-            const isOnlineLesson = lesson.subjects.some(
-              (subject) => subject.meetingUrl !== null,
-            );
+        const nextMondayDate = dayjs
+          .utc()
+          .tz('Europe/Kyiv')
+          .locale('uk', { weekStart: 1 })
+          .startOf('week')
+          .add(1, 'week')
+          .startOf('week')
+          .format('YYYY-MM-DD');
+        const isNextMonday =
+          scheduleDate.format('YYYY-MM-DD') === nextMondayDate;
 
-            const isNow = dayjs()
-              .utc()
-              .isBetween(
-                `${scheduleDate} ${lesson.startTime}`,
-                `${scheduleDate} ${lesson.endTime}`,
-                null,
-                '[]',
-              );
+        if (!scheduleLessons.length) {
+          await ctx.answerCallbackQuery(
+            ctx.t('no-schedule-lessons', {
+              weekdayName: isNextMonday
+                ? 'next-monday'
+                : scheduleDate.format('dddd').toLocaleLowerCase(),
+            }),
+          );
+          return;
+        }
 
-            const formattedStartTime = dayjs
-              .utc(lesson.startTime, 'HH:mm')
-              .tz('Europe/Kyiv')
-              .format('H:mm');
-            const formattedEndTime = dayjs
-              .utc(lesson.endTime, 'HH:mm')
-              .tz('Europe/Kyiv')
-              .format('H:mm');
+        const settings =
+          (await this.settingsRepository.findSettings({
+            isDistanceEducation: true,
+          })) ||
+          (await this.settingsRepository.createSettings({
+            isDistanceEducation: true,
+          }));
 
-            let formattedLesson = '';
+        const scheduleLessonsText = this.scheduleLessonsText(
+          ctx,
+          scheduleDate.format('YYYY-MM-DD'),
+          scheduleLessons,
+          settings.isDistanceEducation,
+        );
 
-            if (isDistanceEducation && isOnlineLesson && isNow) {
-              formattedLesson =
-                `<b>${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})</b>\n` +
-                `${lesson.subjects
-                  .map(
-                    (subject) =>
-                      `${
-                        subject.meetingUrl
-                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
-                          : `- ${subject.name} (${subject.teacherName})`
-                      }`,
-                  )
-                  .join('\n')}`;
-            } else if (isDistanceEducation && !isOnlineLesson) {
-              formattedLesson =
-                `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
-                `${lesson.subjects
-                  .map(
-                    (subject) =>
-                      `${
-                        subject.meetingUrl
-                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
-                          : `- ${subject.name} (${subject.teacherName})`
-                      }`,
-                  )
-                  .join('\n')}`;
-            } else if (!isDistanceEducation && isNow) {
-              formattedLesson =
-                `<b>${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})</b>\n` +
-                `${lesson.subjects
-                  .map(
-                    (subject) =>
-                      `${
-                        subject.meetingUrl
-                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
-                          : `- ${subject.name} (${subject.teacherName})`
-                      }`,
-                  )
-                  .join('\n')}`;
-            } else if (!isDistanceEducation && !isNow) {
-              formattedLesson =
-                `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
-                `${lesson.subjects
-                  .map(
-                    (subject) =>
-                      `${
-                        subject.meetingUrl
-                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
-                          : `- ${subject.name} (${subject.teacherName})`
-                      }`,
-                  )
-                  .join('\n')}`;
-            } else {
-              formattedLesson =
-                `${lesson.number}-й урок (${formattedStartTime} - ${formattedEndTime})\n` +
-                `${lesson.subjects
-                  .map(
-                    (subject) =>
-                      `${
-                        subject.meetingUrl
-                          ? `<a href="${subject.meetingUrl}">- ${subject.name} (${subject.teacherName})</a>`
-                          : `- ${subject.name} (${subject.teacherName})`
-                      }`,
-                  )
-                  .join('\n')}`;
-            }
+        const updatedAtSchedule =
+          await this.schedulesService.getUpdatedAtSchedule(scheduleClass);
 
-            return formattedLesson;
-          })
-          .join('\n\n');
+        const isNzProblems = updatedAtSchedule
+          ? dayjs.utc().diff(dayjs.utc(updatedAtSchedule), 'minute') >= 10
+          : null;
 
-        const updatedAt = await this.schedulesService.updatedAt(userClass);
-
-        const now = dayjs().utc();
-        const nzProblemsText =
-          updatedAt && now.diff(dayjs(updatedAt), 'minute') >= 10
-            ? `<b>⚠️ Увага! Останнє оновлення розкладу: ${dayjs(updatedAt)
-                .tz('Europe/Kyiv')
-                .format('DD.MM.YYYY о HH:mm')}.</b>`
-            : '';
-
-        const scheduleText = `<b>${dayText}</b>\n\n${lessonsText}\n\n${nzProblemsText}`;
-
-        await ctx.editMessageText(scheduleText, {
-          link_preview_options: { is_disabled: true },
-          parse_mode: 'HTML',
-        });
-        await ctx.answerCallbackQuery();
-
-        const analyticsScheduleDate = dayjs.utc(scheduleDate).toISOString();
         const analytics = await this.analyticsRepository.findAnalytics(
           user.class,
-          analyticsScheduleDate,
+          scheduleDate.toISOString(),
         );
 
         if (!analytics) {
           await this.analyticsRepository.createAnalytics(
             user.class,
-            analyticsScheduleDate,
+            scheduleDate.toISOString(),
           );
         } else {
           await this.analyticsRepository.updateAnalytics(
             user.class,
-            analyticsScheduleDate,
+            scheduleDate.toISOString(),
           );
         }
-      },
-    );
-  }
 
-  onProfileText() {
-    this.bot.hears('👤 Профіль', async (ctx) => {
-      if (!ctx.from) return;
+        const lastUpdatedAtSchedule = dayjs
+          .utc(updatedAtSchedule)
+          .tz('Europe/Kyiv')
+          .locale('uk')
+          .format('DD.MM.YYYY о HH:mm');
+        const nzProblemsText = isNzProblems
+          ? `\n\n<b>⚠️ Увага! Розклад оновлено ${lastUpdatedAtSchedule}!</b>`
+          : '';
 
-      const userId = ctx.from.id;
-      const user = await this.usersRepository.findUser(userId);
-
-      if (!user) {
-        const mainKeyboard = this.getMainKeyboard(userId);
-
-        await ctx.reply('Створи профіль за допомогою команди /start', {
-          reply_markup: mainKeyboard,
-        });
-
-        return;
-      }
-
-      const userClassText =
-        user.class === 'CLASS_11A'
-          ? '11-А'
-          : user.class === 'CLASS_11B'
-            ? '11-Б'
-            : 'не встановлено';
-      const profileText =
-        '<b>Профіль</b>' +
-        `\nID: <code>${userId}</code>` +
-        `\nКлас: <code>${userClassText}</code>`;
-      const modifyUserClassText = user.class
-        ? 'Змінити клас'
-        : 'Встановити клас';
-      const modifyUserClassData = user.class
-        ? 'change-user-class'
-        : 'set-user-class';
-
-      const lessonUpdatesIndicator = user.isNotifyingLessonUpdates
-        ? '✅'
-        : '❌';
-      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
-
-      const dailyScheduleIndicator = user.isGettingDailySchedule ? '✅' : '❌';
-      const dailyScheduleText = `${dailyScheduleIndicator} Щоденний розклад`;
-
-      const profileButtons = [[modifyUserClassText, modifyUserClassData]];
-
-      if (user.class) {
-        profileButtons.push(
-          [lessonUpdatesText, 'profile:lesson-updates'],
-          [dailyScheduleText, 'profile:daily-schedule'],
+        await ctx.editMessageText(
+          ctx.t('schedule-lessons-text.result', {
+            weekdayName: isNextMonday
+              ? 'next-monday'
+              : scheduleDate.format('dddd').toLocaleLowerCase(),
+            isToday: String(scheduleDate.isToday()),
+            weekdayDate: scheduleDate.format('DD.MM.YYYY'),
+            scheduleLessonsText,
+          }) + nzProblemsText,
+          { link_preview_options: { is_disabled: true } },
         );
-      }
-
-      const profileKeyboard = InlineKeyboard.from(
-        profileButtons.map((button) => {
-          return [InlineKeyboard.text(button[0], button[1])];
-        }),
-      );
-
-      await ctx.reply(profileText, {
-        parse_mode: 'HTML',
-        reply_markup: profileKeyboard,
+        await ctx.answerCallbackQuery();
       });
-    });
   }
 
-  onModifyUserClassCallbackQuery() {
-    this.bot.callbackQuery(/^(set|change)-user-class$/, async (ctx) => {
-      if (!ctx.from) return;
+  private scheduleLessonsText(
+    ctx: MyContext,
+    scheduleDate: string,
+    scheduleLessons: ScheduleLesson[],
+    isDistanceEducation: boolean,
+  ) {
+    return scheduleLessons
+      .map((scheduleLesson) => {
+        const isOnlineLesson = scheduleLesson.subjects.some(
+          (scheduleLessonSubject) => scheduleLessonSubject.meetingUrl !== null,
+        );
 
-      const userId = ctx.from.id;
-      const user = await this.usersRepository.findUser(userId);
+        const scheduleLessonStartTime = dayjs.utc(
+          `${scheduleDate} ${scheduleLesson.startTime}`,
+          'YYYY-MM-DD HH:mm',
+        );
+        const scheduleLessonEndTime = dayjs.utc(
+          `${scheduleDate} ${scheduleLesson.endTime}`,
+          'YYYY-MM-DD HH:mm',
+        );
+        const isNow = dayjs()
+          .utc()
+          .isBetween(
+            scheduleLessonStartTime,
+            scheduleLessonEndTime,
+            null,
+            '[]',
+          );
 
-      if (!user) {
-        const mainKeyboard = this.getMainKeyboard(userId);
+        let scheduleLessonText;
 
-        await ctx.reply('Створи профіль за допомогою команди /start', {
-          reply_markup: mainKeyboard,
+        const scheduleLessonSujectsText = scheduleLesson.subjects
+          .map((scheduleLessonSubject) => {
+            const scheduleLessonSujectText = scheduleLessonSubject.meetingUrl
+              ? `<a href="${scheduleLessonSubject.meetingUrl}">- ${scheduleLessonSubject.name} (${scheduleLessonSubject.teacherName})</a>`
+              : `- ${scheduleLessonSubject.name} (${scheduleLessonSubject.teacherName})`;
+
+            return scheduleLessonSujectText;
+          })
+          .join('\n');
+
+        if (isDistanceEducation && isOnlineLesson && isNow) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson-bold', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonEndTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else if (isDistanceEducation && !isOnlineLesson) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonEndTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else if (!isDistanceEducation && isNow) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson-bold', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonEndTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else if (!isDistanceEducation && !isNow) {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonEndTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        } else {
+          scheduleLessonText = ctx.t('schedule-lessons-text.lesson', {
+            lessonNumber: scheduleLesson.number.toString(),
+            lessonStartTime: scheduleLessonStartTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+            lessonEndTime: scheduleLessonEndTime
+              .tz('Europe/Kyiv')
+              .format('H:mm'),
+          });
+        }
+
+        return ctx.t('schedule-lessons-text.lessons-result', {
+          scheduleLessonText,
+          scheduleLessonSujectsText,
+        });
+      })
+      .join('\n\n');
+  }
+
+  private onProfileButton() {
+    this.bot
+      .chatType('private')
+      .filter(hears('buttons.profile'), async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          id: true,
+          class: true,
+          isNotifyingLessonUpdates: true,
+          isGettingDailySchedule: true,
+          createdAt: true,
         });
 
-        return;
-      }
+        if (!user) return;
 
-      const modifyUserClassText = 'Обери клас:';
-      const operation = ctx.match[1];
-      const modifyUserClassKeyboard = new InlineKeyboard()
-        .text('11-А', `${operation}-user-class:11a`)
-        .row()
-        .text('11-Б', `${operation}-user-class:11b`);
+        const { text: profileText, keyboard: profileKeyboard } = this.profile(
+          ctx,
+          user,
+        );
 
-      await ctx.editMessageText(modifyUserClassText, {
-        reply_markup: modifyUserClassKeyboard,
+        await ctx.reply(profileText, { reply_markup: profileKeyboard });
       });
-      await ctx.answerCallbackQuery();
-    });
   }
 
-  onSetOrChangeUserClassCallbackQuery() {
-    this.bot.callbackQuery(
-      /^(set|change)-user-class:(11a|11b)$/,
-      async (ctx) => {
-        if (!ctx.from) return;
+  private profile(ctx: MyContext, user: Omit<User, 'updatedAt'>) {
+    const text = ctx.t('profile-text', {
+      id: user.id.toString(),
+      class: user.class,
+      createdAt: dayjs
+        .utc(user.createdAt)
+        .tz('Europe/Kyiv')
+        .format('DD.MM.YYYY'),
+    });
 
-        const userId = ctx.from.id;
-        const user = await this.usersRepository.findUser(userId);
+    const keyboard = InlineKeyboard.from([
+      [
+        InlineKeyboard.text(
+          ctx.t('profile-keyboard.change-class'),
+          'profile:change-class',
+        ),
+      ],
+      [
+        InlineKeyboard.text(
+          ctx.t('profile-keyboard.lesson-updates-button', {
+            isNotifyingLessonUpdates: String(user.isNotifyingLessonUpdates),
+          }),
+          'profile:lesson-updates',
+        ),
+      ],
+      [
+        InlineKeyboard.text(
+          ctx.t('profile-keyboard.daily-schedule-button', {
+            isGettingDailySchedule: String(user.isGettingDailySchedule),
+          }),
+          'profile:daily-schedule',
+        ),
+      ],
+    ]);
+
+    return { text, keyboard };
+  }
+
+  private onProfileChangeClassCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery('profile:change-class', async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          class: true,
+        });
 
         if (!user) {
-          const mainKeyboard = this.getMainKeyboard(userId);
-
-          await ctx.reply('Створи профіль за допомогою команди /start', {
-            reply_markup: mainKeyboard,
-          });
-
+          await ctx.answerCallbackQuery();
           return;
         }
 
-        const match = ctx.match;
-        const _class = `CLASS_${match[2].toLocaleUpperCase()}` as Class;
+        const updatedUser = await this.usersRepository.updateUser(
+          ctx.from.id,
+          {
+            class: user.class === 'CLASS_11A' ? 'CLASS_11B' : 'CLASS_11A',
+          },
+          {
+            id: true,
+            class: true,
+            isNotifyingLessonUpdates: true,
+            isGettingDailySchedule: true,
+            createdAt: true,
+          },
+        );
 
-        await this.usersRepository.updateUser(userId, {
-          class: { set: _class },
+        const { text: profileText, keyboard: profileKeyboard } = this.profile(
+          ctx,
+          updatedUser,
+        );
+
+        await ctx.editMessageText(profileText, {
+          reply_markup: profileKeyboard,
+        });
+        await ctx.answerCallbackQuery(
+          ctx.t('modified-class-text', { action: 'change' }),
+        );
+      });
+  }
+
+  private onProfileLessonUpdatesCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery('profile:lesson-updates', async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          isNotifyingLessonUpdates: true,
         });
 
-        if (!user.class) {
+        if (!user) {
+          await ctx.answerCallbackQuery();
+          return;
+        }
+
+        const updatedUser = await this.usersRepository.updateUser(
+          ctx.from.id,
+          {
+            isNotifyingLessonUpdates: !user.isNotifyingLessonUpdates,
+          },
+          {
+            id: true,
+            class: true,
+            isNotifyingLessonUpdates: true,
+            isGettingDailySchedule: true,
+            createdAt: true,
+          },
+        );
+
+        const { keyboard: profileKeyboard } = this.profile(ctx, updatedUser);
+
+        await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
+        await ctx.answerCallbackQuery(
+          ctx.t('profile.updated-lesson-updates-text', {
+            isNotifyingLessonUpdates: String(
+              updatedUser.isNotifyingLessonUpdates,
+            ),
+          }),
+        );
+      });
+  }
+
+  private onProfileDailyScheduleCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery('profile:daily-schedule', async (ctx) => {
+        const user = await this.usersRepository.findUser(ctx.from.id, {
+          isGettingDailySchedule: true,
+        });
+
+        if (!user) {
+          await ctx.answerCallbackQuery();
+          return;
+        }
+
+        const updatedUser = await this.usersRepository.updateUser(
+          ctx.from.id,
+          {
+            isGettingDailySchedule: !user.isGettingDailySchedule,
+          },
+          {
+            id: true,
+            class: true,
+            isNotifyingLessonUpdates: true,
+            isGettingDailySchedule: true,
+            createdAt: true,
+          },
+        );
+
+        if (updatedUser.isGettingDailySchedule) {
           await this.messageDistributionQueue.add(
             'daily-schedule',
-            { userId: userId },
+            { userId: ctx.from.id },
             {
-              jobId: userId,
+              jobId: ctx.from.id,
               repeat: { cron: '30 7 * * *', tz: 'Europe/Kyiv' },
+            },
+          );
+        } else {
+          await this.messageDistributionQueue.removeRepeatable(
+            'daily-schedule',
+            {
+              jobId: ctx.from.id,
+              cron: '30 7 * * *',
+              tz: 'Europe/Kyiv',
             },
           );
         }
 
-        const setOrChangeUserClassText =
-          match[1] === 'set'
-            ? 'Клас успішно встановлено ✅'
-            : 'Клас успішно змінено ✅';
+        const { keyboard: profileKeyboard } = this.profile(ctx, updatedUser);
 
-        await ctx.editMessageText(setOrChangeUserClassText);
-        await ctx.answerCallbackQuery();
-      },
-    );
-  }
-
-  onAdminText() {
-    this.bot.hears('🔧 Адміністратор', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const settings = await this.settingsRepository.findSettings();
-      const { isDistanceEducation, isTechnicalWorks } =
-        settings || (await this.settingsRepository.createSettings());
-
-      const distanceEducationIndicator = isDistanceEducation ? '✅' : '❌';
-      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
-
-      const technicalWorksIndicator = isTechnicalWorks ? '✅' : '❌';
-      const technicalWorksText = `${technicalWorksIndicator} Технічні роботи`;
-
-      const adminKeyboard = new InlineKeyboard()
-        .text('👥 Користувачі', 'admin:users')
-        .row()
-        .text('📊 Аналітика', 'admin:analytics')
-        .row()
-        .text(distanceEducationText, 'admin:distance-education')
-        .row()
-        .text(technicalWorksText, 'admin:technical-works');
-
-      await ctx.reply('Обери розділ:', { reply_markup: adminKeyboard });
-    });
-  }
-
-  onAdminUsersCallbackQuery() {
-    this.bot.callbackQuery('admin:users', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const [
-        class11aUsersCount,
-        class11bUsersCount,
-        noClassUsersCount,
-        classesUsersCount,
-      ] = await this.usersRepository.countClassesUsers();
-
-      const usersText =
-        '<b>Користувачі</b>' +
-        `\n11-А: <code>${class11aUsersCount}</code>` +
-        `\n11-Б: <code>${class11bUsersCount}</code>` +
-        `\nБез класу: <code>${noClassUsersCount}</code>` +
-        `\nЗагалом: <code>${classesUsersCount}</code>`;
-
-      await ctx.editMessageText(usersText, { parse_mode: 'HTML' });
-      await ctx.answerCallbackQuery();
-    });
-  }
-
-  onAdminAnalyticsCallbackQuery() {
-    this.bot.callbackQuery('admin:analytics', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const [
-        {
-          _sum: { count: class11aAnalyticsCount },
-        },
-        {
-          _sum: { count: class11bAnalyticsCount },
-        },
-        {
-          _sum: { count: overallAnalyticsCount },
-        },
-      ] = await this.analyticsRepository.countAnalytics();
-
-      const analyticsText =
-        '<b>Аналітика</b>' +
-        `\n11-А: <code>${class11aAnalyticsCount}</code>` +
-        `\n11-Б: <code>${class11bAnalyticsCount}</code>` +
-        `\nЗагалом: <code>${overallAnalyticsCount}</code>`;
-
-      await ctx.editMessageText(analyticsText, { parse_mode: 'HTML' });
-      await ctx.answerCallbackQuery();
-    });
-  }
-
-  onAdminDistanceEducationCallbackQuery() {
-    this.bot.callbackQuery('admin:distance-education', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const settings = await this.settingsRepository.findSettings();
-      const {
-        id: settingsId,
-        isDistanceEducation,
-        isTechnicalWorks,
-      } = settings || (await this.settingsRepository.createSettings());
-
-      const { isDistanceEducation: updatedIsDistanceEducation } =
-        await this.settingsRepository.updateSettings(settingsId, {
-          isDistanceEducation: !isDistanceEducation,
-        });
-
-      const distanceEducationIndicator = updatedIsDistanceEducation
-        ? '✅'
-        : '❌';
-      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
-
-      const technicalWorksIndicator = isTechnicalWorks ? '✅' : '❌';
-      const technicalWorksText = `${technicalWorksIndicator} Технічні роботи`;
-
-      const adminKeyboard = new InlineKeyboard()
-        .text('👥 Користувачі', 'admin:users')
-        .row()
-        .text('📊 Аналітика', 'admin:analytics')
-        .row()
-        .text(distanceEducationText, 'admin:distance-education')
-        .row()
-        .text(technicalWorksText, 'admin:technical-works');
-
-      await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
-      await ctx.answerCallbackQuery();
-    });
-  }
-
-  onProfileLessonUpdatesCallbackQuery() {
-    this.bot.callbackQuery('profile:lesson-updates', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-      const user = await this.usersRepository.findUser(userId);
-
-      if (!user) {
-        const mainKeyboard = this.getMainKeyboard(userId);
-
-        await ctx.reply('Створи профіль за допомогою команди /start', {
-          reply_markup: mainKeyboard,
-        });
-
-        return;
-      }
-
-      if (!user.class) {
-        const classesText = 'Спочатку обери свій клас:';
-        const classesKeyboard = new InlineKeyboard()
-          .text('11-А', 'set-user-class:11a')
-          .row()
-          .text('11-Б', 'set-user-class:11b');
-
-        await ctx.reply(classesText, { reply_markup: classesKeyboard });
-
-        return;
-      }
-
-      const { isNotifyingLessonUpdates } =
-        await this.usersRepository.updateUser(userId, {
-          isNotifyingLessonUpdates: !user.isNotifyingLessonUpdates,
-        });
-
-      const modifyUserClassText = user.class
-        ? 'Змінити клас'
-        : 'Встановити клас';
-      const modifyUserClassData = user.class
-        ? 'change-user-class'
-        : 'set-user-class';
-
-      const lessonUpdatesIndicator = isNotifyingLessonUpdates ? '✅' : '❌';
-      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
-
-      const dailyScheduleIndicator = user.isGettingDailySchedule ? '✅' : '❌';
-      const dailyScheduleText = `${dailyScheduleIndicator} Щоденний розклад`;
-
-      const profileKeyboard = new InlineKeyboard()
-        .text(modifyUserClassText, modifyUserClassData)
-        .row()
-        .text(lessonUpdatesText, 'profile:lesson-updates')
-        .row()
-        .text(dailyScheduleText, 'profile:daily-schedule');
-
-      await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
-      await ctx.answerCallbackQuery();
-    });
-  }
-
-  onUpdateCommand() {
-    this.bot.command('update', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const users = await this.usersRepository.findUsersWithId();
-
-      await this.messageDistributionQueue.addBulk(
-        users.map((user) => ({
-          data: { userId: user.id.toString() },
-          name: 'update',
-        })),
-      );
-
-      await ctx.reply('Розсилка успішна ✅');
-    });
+        await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
+        await ctx.answerCallbackQuery(
+          ctx.t('profile.updated-daily-schedule-text', {
+            isGettingDailySchedule: String(updatedUser.isGettingDailySchedule),
+          }),
+        );
+      });
   }
 
   async sendMessage(userId: string, text: string) {
     try {
-      const mainKeyboard = this.getMainKeyboard(Number(userId));
+      // const mainKeyboard = this.getMainKeyboard(Number(userId));
 
       await this.bot.api.sendMessage(userId, text, {
         link_preview_options: { is_disabled: true },
         parse_mode: 'HTML',
-        reply_markup: mainKeyboard,
+        // reply_markup: mainKeyboard,
       });
     } catch (error) {
       if (error instanceof GrammyError) {
@@ -836,177 +714,5 @@ export class TelegramService implements OnModuleInit {
         }
       }
     }
-  }
-
-  getSubjectForm(subjectName: string) {
-    const subjectsForms: Record<string, string> = {
-      алгебра: 'алгебри',
-      'англійська мова': 'англійської мови',
-      астрономія: 'астрономії',
-      біологія: 'біології',
-      географія: 'географії',
-      геометрія: 'геометрії',
-      'захист україни': 'захисту України',
-      інформатика: 'інформатики',
-      'історія україни': 'історії України',
-      фізика: 'фізики',
-      'фізична культура': 'фізичної культури',
-      хімія: 'хімії',
-      технології: 'технологій',
-      'зарубіжна література': 'зарубіжної літератури',
-    };
-
-    const lowercaseSubjectName = subjectName.toLowerCase();
-    const subjectForm = subjectsForms[lowercaseSubjectName];
-
-    return subjectForm || null;
-  }
-
-  async onAdminTechnicalWorksCallbackQuery() {
-    this.bot.callbackQuery('admin:technical-works', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const settings = await this.settingsRepository.findSettings();
-      const {
-        id: settingsId,
-        isDistanceEducation,
-        isTechnicalWorks,
-      } = settings || (await this.settingsRepository.createSettings());
-
-      const distanceEducationIndicator = isDistanceEducation ? '✅' : '❌';
-      const distanceEducationText = `${distanceEducationIndicator} Дистанційне навчання`;
-
-      const { isTechnicalWorks: updatedIsTechnicalWorks } =
-        await this.settingsRepository.updateSettings(settingsId, {
-          isTechnicalWorks: !isTechnicalWorks,
-        });
-
-      const technicalWorksIndicator = updatedIsTechnicalWorks ? '✅' : '❌';
-      const technicalWorksText = `${technicalWorksIndicator} Технічні роботи`;
-
-      const adminKeyboard = new InlineKeyboard()
-        .text('👥 Користувачі', 'admin:users')
-        .row()
-        .text('📊 Аналітика', 'admin:analytics')
-        .row()
-        .text(distanceEducationText, 'admin:distance-education')
-        .row()
-        .text(technicalWorksText, 'admin:technical-works');
-
-      await ctx.editMessageReplyMarkup({ reply_markup: adminKeyboard });
-      await ctx.answerCallbackQuery();
-    });
-  }
-
-  async onAnnouncementCommand() {
-    this.bot.command('announcement', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-
-      if (this.superAdminId !== userId) {
-        return;
-      }
-
-      const users = await this.usersRepository.findUsersWithIdAndClass();
-
-      await this.messageDistributionQueue.addBulk(
-        users.map((user) => ({
-          data: {
-            userId: user.id.toString(),
-            _class: user.class === 'CLASS_11A' ? '11a' : '11b',
-          },
-          name: 'announcement',
-        })),
-      );
-
-      await ctx.reply('Розсилка успішна ✅');
-    });
-  }
-
-  onProfileDailyScheduleCallbackQuery() {
-    this.bot.callbackQuery('profile:daily-schedule', async (ctx) => {
-      if (!ctx.from) return;
-
-      const userId = ctx.from.id;
-      const user = await this.usersRepository.findUser(userId);
-
-      if (!user) {
-        const mainKeyboard = this.getMainKeyboard(userId);
-
-        await ctx.reply('Створи профіль за допомогою команди /start', {
-          reply_markup: mainKeyboard,
-        });
-
-        return;
-      }
-
-      if (!user.class) {
-        const classesText = 'Спочатку обери свій клас:';
-        const classesKeyboard = new InlineKeyboard()
-          .text('11-А', 'set-user-class:11a')
-          .row()
-          .text('11-Б', 'set-user-class:11b');
-
-        await ctx.reply(classesText, { reply_markup: classesKeyboard });
-
-        return;
-      }
-
-      const { isGettingDailySchedule } = await this.usersRepository.updateUser(
-        userId,
-        {
-          isGettingDailySchedule: !user.isGettingDailySchedule,
-        },
-      );
-
-      if (isGettingDailySchedule) {
-        await this.messageDistributionQueue.add(
-          'daily-schedule',
-          { userId: userId },
-          {
-            jobId: userId,
-            repeat: { cron: '30 7 * * *', tz: 'Europe/Kyiv' },
-          },
-        );
-      } else {
-        await this.messageDistributionQueue.removeRepeatable('daily-schedule', {
-          jobId: userId,
-          cron: '30 7 * * *',
-          tz: 'Europe/Kyiv',
-        });
-      }
-
-      const modifyUserClassText = user.class
-        ? 'Змінити клас'
-        : 'Встановити клас';
-      const modifyUserClassData = user.class
-        ? 'change-user-class'
-        : 'set-user-class';
-
-      const lessonUpdatesIndicator = user.isNotifyingLessonUpdates
-        ? '✅'
-        : '❌';
-      const lessonUpdatesText = `${lessonUpdatesIndicator} Оновлення уроків`;
-
-      const dailyScheduleIndicator = isGettingDailySchedule ? '✅' : '❌';
-      const dailyScheduleText = `${dailyScheduleIndicator} Щоденний розклад`;
-
-      const profileKeyboard = new InlineKeyboard()
-        .text(modifyUserClassText, modifyUserClassData)
-        .row()
-        .text(lessonUpdatesText, 'profile:lesson-updates')
-        .row()
-        .text(dailyScheduleText, 'profile:daily-schedule');
-
-      await ctx.editMessageReplyMarkup({ reply_markup: profileKeyboard });
-      await ctx.answerCallbackQuery();
-    });
   }
 }
