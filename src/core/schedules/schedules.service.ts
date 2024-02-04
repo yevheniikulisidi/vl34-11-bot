@@ -1,6 +1,7 @@
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bull';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
@@ -10,7 +11,13 @@ import {
   DiarySubject,
 } from 'src/integrations/nz/interfaces/diary.interface';
 import { NzService } from 'src/integrations/nz/nz.service';
-import { Schedule, ScheduleLesson } from './interfaces/schedule.interface';
+import { ConferencesRepository } from '../conferences/repositories/conferences.repository';
+import {
+  Schedule,
+  ScheduleDate,
+  ScheduleLesson,
+  ScheduleSubject,
+} from './interfaces/schedule.interface';
 
 @Injectable()
 export class SchedulesService implements OnModuleInit {
@@ -18,6 +25,8 @@ export class SchedulesService implements OnModuleInit {
     @InjectQueue('schedules') private readonly schedulesQueue: Queue,
     @InjectRedis() private readonly redis: Redis,
     private readonly nzService: NzService,
+    private readonly configService: ConfigService,
+    private readonly conferencesRepository: ConferencesRepository,
   ) {}
 
   async onModuleInit() {
@@ -26,6 +35,7 @@ export class SchedulesService implements OnModuleInit {
   }
 
   async schedule(
+    scheduleClass: '11a' | '11b',
     accessToken: string,
     startDate: string,
     endDate: string,
@@ -35,31 +45,89 @@ export class SchedulesService implements OnModuleInit {
       this.nzService.diary(accessToken, startDate, endDate),
     ]);
 
-    return {
-      dates: timetable.dates.map((timetableDate) => ({
-        date: timetableDate.date,
-        lessons: timetableDate.calls.map((timetableCall) => {
-          const diaryCall = this.findDiaryCall(
-            timetableDate.date,
-            timetableCall.call_number,
+    const customMeetingDomain = this.configService.getOrThrow<string>(
+      'CUSTOM_MEETING_DOMAIN',
+    );
+
+    const dates: ScheduleDate[] = [];
+
+    for (const date of timetable.dates) {
+      const lessons: ScheduleLesson[] = [];
+
+      for (const lesson of date.calls) {
+        const subjects: ScheduleSubject[] = [];
+
+        for (const subject of lesson.subjects) {
+          const diaryLesson = this.findDiaryCall(
+            date.date,
+            lesson.call_number,
             diary,
           );
 
-          return {
-            number: timetableCall.call_number,
-            startTime: this.formatTime(timetableCall.time_start),
-            endTime: this.formatTime(timetableCall.time_end),
-            subjects: timetableCall.subjects.map((timetableSubject) => ({
-              name: timetableSubject.subject_name.replace(/\s{2}/g, ' ').trim(),
-              meetingUrl: diaryCall
-                ? this.findMeetingUrl(diaryCall.subjects)
-                : null,
-              teacherName: timetableSubject.teacher.name,
-            })),
-          };
-        }),
-      })),
-    };
+          const meetingUrl = diaryLesson
+            ? this.findMeetingUrl(diaryLesson.subjects)
+            : null;
+
+          if (!meetingUrl) {
+            subjects.push({
+              name: this.cleanSubjectName(subject.subject_name),
+              meetingUrl,
+              teacherName: subject.teacher.name,
+            });
+            continue;
+          }
+
+          const scheduleDate = dayjs.utc(date.date).toISOString();
+
+          const conference =
+            await this.conferencesRepository.findConferenceByUrlAndDateAndClass(
+              meetingUrl,
+              scheduleClass === '11a' ? 'CLASS_11A' : 'CLASS_11B',
+              scheduleDate,
+              { id: true },
+            );
+
+          if (!conference) {
+            const createdConference =
+              await this.conferencesRepository.createConference(
+                {
+                  originalConferenceUrl: meetingUrl,
+                  scheduleClass:
+                    scheduleClass === '11a' ? 'CLASS_11A' : 'CLASS_11B',
+                  scheduleDate,
+                },
+                { id: true },
+              );
+            subjects.push({
+              name: this.cleanSubjectName(subject.subject_name),
+              meetingUrl: `${customMeetingDomain}/meet/${createdConference.id}`,
+              teacherName: subject.teacher.name,
+            });
+          } else {
+            subjects.push({
+              name: this.cleanSubjectName(subject.subject_name),
+              meetingUrl: `${customMeetingDomain}/meet/${conference.id}`,
+              teacherName: subject.teacher.name,
+            });
+          }
+        }
+
+        lessons.push({
+          number: lesson.call_number,
+          startTime: this.formatTime(lesson.time_start),
+          endTime: this.formatTime(lesson.time_end),
+          subjects,
+        });
+      }
+
+      dates.push({ date: date.date, lessons });
+    }
+
+    return { dates };
+  }
+
+  private cleanSubjectName(subjectName: string) {
+    return subjectName.replace(/\s{2}/g, ' ').trim();
   }
 
   private formatTime(time: string): string {
