@@ -41,3 +41,25 @@ model Settings {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
+
+model Conference {
+  id                    String                @id
+  originalConferenceUrl String                @db.Text
+  scheduleClass         Class
+  scheduleDate          DateTime              @db.Date
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  analytics             ConferenceAnalytics[]
+
+  @@unique([originalConferenceUrl, scheduleClass, scheduleDate])
+  @@index([originalConferenceUrl, scheduleClass, scheduleDate])
+}
+
+model ConferenceAnalytics {
+  id           String     @id @default(uuid())
+  conference   Conference @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  conferenceId String
+  deviceType   String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}

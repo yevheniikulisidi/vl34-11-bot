@@ -236,7 +236,7 @@ export class TelegramService implements OnModuleInit {
             createKeyboardRow(
               weekdayName,
               weekdayNumber + 1,
-              currentWeekStart.day(weekdayNumber).isToday(),
+              currentWeekStart.day(weekdayNumber + 1).isToday(),
             ),
           ),
         );

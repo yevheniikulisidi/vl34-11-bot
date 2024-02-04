@@ -6,11 +6,17 @@ import { Queue, Job } from 'bull';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { chain, isEqual } from 'lodash';
+import { ConferencesRepository } from 'src/core/conferences/repositories/conferences.repository';
 import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { NzService } from 'src/integrations/nz/nz.service';
 import { LessonUpdates } from '../interfaces/lesson-updates.interface';
-import { Schedule, ScheduleLesson } from '../interfaces/schedule.interface';
+import {
+  Schedule,
+  ScheduleLesson,
+  ScheduleDate,
+  ScheduleSubject,
+} from '../interfaces/schedule.interface';
 import { SchedulesService } from '../schedules.service';
 
 @Processor('schedules')
@@ -26,6 +32,7 @@ export class SchedulesConsumer {
     private readonly schedulesService: SchedulesService,
     private readonly settingsRepository: SettingsRepository,
     private readonly usersRepository: UsersRepository,
+    private readonly conferencesRepository: ConferencesRepository,
   ) {}
 
   @OnQueueFailed()
@@ -117,6 +124,10 @@ export class SchedulesConsumer {
     ]);
 
     const schedule = this.mergeSchedules(boySchedule, girlSchedule);
+    const scheduleConferences = await this.scheduleConferences(
+      _class,
+      schedule,
+    );
 
     const settings = await this.settingsRepository.findSettings();
     const { isDistanceEducation, isTechnicalWorks } =
@@ -157,7 +168,7 @@ export class SchedulesConsumer {
       }
     }
 
-    await this.cacheSchedule(_class, schedule, 7 * 24 * 60 * 60);
+    await this.cacheSchedule(_class, scheduleConferences, 7 * 24 * 60 * 60);
 
     if (now.day() === 0) {
       const startOfNextWeek = now
@@ -183,8 +194,12 @@ export class SchedulesConsumer {
       ]);
 
       const schedule2 = this.mergeSchedules(boySchedule2, girlSchedule2);
+      const schedule2Conferences = await this.scheduleConferences(
+        _class,
+        schedule2,
+      );
 
-      await this.cacheSchedule(_class, schedule2, 7 * 24 * 60 * 60);
+      await this.cacheSchedule(_class, schedule2Conferences, 7 * 24 * 60 * 60);
     }
   }
 
@@ -355,5 +370,80 @@ export class SchedulesConsumer {
     });
 
     return lessonUpdates;
+  }
+
+  private async scheduleConferences(
+    scheduleClass: '11a' | '11b',
+    schedule: Schedule,
+  ): Promise<Schedule> {
+    const customMeetingDomain = this.configService.getOrThrow<string>(
+      'CUSTOM_MEETING_DOMAIN',
+    );
+
+    const dates: ScheduleDate[] = [];
+
+    for (const date of schedule.dates) {
+      const lessons: ScheduleLesson[] = [];
+
+      for (const lesson of date.lessons) {
+        const subjects: ScheduleSubject[] = [];
+
+        for (const subject of lesson.subjects) {
+          if (!subject.meetingUrl) {
+            subjects.push({
+              name: subject.name,
+              meetingUrl: subject.meetingUrl,
+              teacherName: subject.teacherName,
+            });
+            continue;
+          }
+
+          const scheduleDate = dayjs.utc(date.date).toISOString();
+
+          const conference =
+            await this.conferencesRepository.findConferenceByUrlAndDateAndClass(
+              subject.meetingUrl,
+              scheduleClass === '11a' ? 'CLASS_11A' : 'CLASS_11B',
+              scheduleDate,
+              { id: true },
+            );
+
+          if (!conference) {
+            const createdConference =
+              await this.conferencesRepository.createConference(
+                {
+                  originalConferenceUrl: subject.meetingUrl,
+                  scheduleClass:
+                    scheduleClass === '11a' ? 'CLASS_11A' : 'CLASS_11B',
+                  scheduleDate,
+                },
+                { id: true },
+              );
+            subjects.push({
+              name: subject.name,
+              meetingUrl: `${customMeetingDomain}/meet/${createdConference.id}`,
+              teacherName: subject.teacherName,
+            });
+          } else {
+            subjects.push({
+              name: subject.name,
+              meetingUrl: `${customMeetingDomain}/meet/${conference.id}`,
+              teacherName: subject.teacherName,
+            });
+          }
+        }
+
+        lessons.push({
+          number: lesson.number,
+          startTime: lesson.startTime,
+          endTime: lesson.endTime,
+          subjects,
+        });
+      }
+
+      dates.push({ date: date.date, lessons });
+    }
+
+    return { dates };
   }
 }
