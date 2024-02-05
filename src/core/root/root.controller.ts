@@ -13,7 +13,7 @@ export class RootController {
     return {
       userCount: rootStatistics.userCount,
       scheduleGettingCount: this.rootService.formatCount(
-        +rootStatistics.scheduleGettingCount,
+        rootStatistics.scheduleGettingCount,
       ),
       connectedToLessonsCount: this.rootService.formatCount(
         rootStatistics.connectedToLessonsCount,
