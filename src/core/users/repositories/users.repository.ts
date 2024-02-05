@@ -28,14 +28,6 @@ export class UsersRepository {
     return await this.prisma.user.update({ data, where: { id }, select });
   }
 
-  async countClassesUsers() {
-    return this.prisma.$transaction([
-      this.prisma.user.count({ where: { class: 'CLASS_11A' } }),
-      this.prisma.user.count({ where: { class: 'CLASS_11B' } }),
-      this.prisma.user.count(),
-    ]);
-  }
-
   async findUsersWithId() {
     return await this.prisma.user.findMany({ select: { id: true } });
   }
@@ -51,5 +43,9 @@ export class UsersRepository {
     return await this.prisma.user.findMany({
       select: { id: true, class: true },
     });
+  }
+
+  async countUsers() {
+    return await this.prisma.user.count();
   }
 }
