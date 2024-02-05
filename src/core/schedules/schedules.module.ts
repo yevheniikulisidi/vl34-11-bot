@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { NzModule } from 'src/integrations/nz/nz.module';
+import { ConferencesModule } from '../conferences/conferences.module';
 import { SettingsModule } from '../settings/settings.module';
 import { UsersModule } from '../users/users.module';
 import { SchedulesConsumer } from './consumers/schedules.consumer';
@@ -31,6 +32,7 @@ import { SchedulesService } from './schedules.service';
     }),
     ConfigModule,
     NzModule,
+    ConferencesModule,
     SettingsModule,
     UsersModule,
   ],

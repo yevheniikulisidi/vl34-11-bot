@@ -6,12 +6,12 @@ import { PrismaService } from 'src/database/prisma.service';
 export class SettingsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findSettings() {
-    return await this.prisma.settings.findFirst();
+  async findSettings(select?: Prisma.SettingsSelect) {
+    return await this.prisma.settings.findFirst({ select });
   }
 
-  async createSettings() {
-    return await this.prisma.settings.create({ data: {} });
+  async createSettings(select?: Prisma.SettingsSelect) {
+    return await this.prisma.settings.create({ data: {}, select });
   }
 
   async updateSettings(

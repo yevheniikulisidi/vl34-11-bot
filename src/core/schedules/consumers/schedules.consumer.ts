@@ -6,6 +6,7 @@ import { Queue, Job } from 'bull';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { chain, isEqual } from 'lodash';
+import { ConferencesRepository } from 'src/core/conferences/repositories/conferences.repository';
 import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { NzService } from 'src/integrations/nz/nz.service';
@@ -26,6 +27,7 @@ export class SchedulesConsumer {
     private readonly schedulesService: SchedulesService,
     private readonly settingsRepository: SettingsRepository,
     private readonly usersRepository: UsersRepository,
+    private readonly conferencesRepository: ConferencesRepository,
   ) {}
 
   @OnQueueFailed()
@@ -112,8 +114,18 @@ export class SchedulesConsumer {
     const endOfWeek = now.endOf('week').format('YYYY-MM-DD');
 
     const [boySchedule, girlSchedule] = await Promise.all([
-      this.schedulesService.schedule(boyAccessToken, startOfWeek, endOfWeek),
-      this.schedulesService.schedule(girlAccessToken, startOfWeek, endOfWeek),
+      this.schedulesService.schedule(
+        _class,
+        boyAccessToken,
+        startOfWeek,
+        endOfWeek,
+      ),
+      this.schedulesService.schedule(
+        _class,
+        girlAccessToken,
+        startOfWeek,
+        endOfWeek,
+      ),
     ]);
 
     const schedule = this.mergeSchedules(boySchedule, girlSchedule);
@@ -171,11 +183,13 @@ export class SchedulesConsumer {
 
       const [boySchedule2, girlSchedule2] = await Promise.all([
         this.schedulesService.schedule(
+          _class,
           boyAccessToken,
           startOfNextWeek,
           endOfNextWeek,
         ),
         this.schedulesService.schedule(
+          _class,
           girlAccessToken,
           startOfNextWeek,
           endOfNextWeek,
