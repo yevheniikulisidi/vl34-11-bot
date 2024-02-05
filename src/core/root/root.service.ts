@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 import { AnalyticsRepository } from '../analytics/repositories/analytics.repository';
 import { ConferencesAnalyticsRepository } from '../conferences/repositories/conferences-analytics.repository';
 import { UsersRepository } from '../users/repositories/users.repository';
+import { RootStatistics } from './interfaces/root-statistics.interface';
 
 @Injectable()
 export class RootService implements OnModuleInit {
@@ -33,31 +34,29 @@ export class RootService implements OnModuleInit {
     }
   }
 
-  async getRootStatistics(): Promise<{
-    userCount: number;
-    scheduleGettingCount: string;
-    connectedToLessonsCount: number;
-  }> {
+  async rootStatistics(): Promise<RootStatistics> {
+    const userCount = await this.usersRepository.countUsers();
+    const {
+      _sum: { count: scheduleGettingCount },
+    } = await this.analyticsRepository.countAnalytics();
+    const connectedToLessonsCount =
+      await this.conferencesAnalyticsRepository.countConferenceAnalytics();
+
+    return {
+      userCount,
+      scheduleGettingCount: scheduleGettingCount
+        ? +scheduleGettingCount.toString()
+        : 0,
+      connectedToLessonsCount,
+    };
+  }
+
+  async getRootStatistics(): Promise<RootStatistics> {
     const cachedRootStatistics = await this.redis.get('root-statistics');
 
     if (!cachedRootStatistics) {
-      const userCount = await this.usersRepository.countUsers();
-      const {
-        _sum: { count: scheduleGettingCount },
-      } = await this.analyticsRepository.countAnalytics();
-      const connectedToLessonsCount =
-        await this.conferencesAnalyticsRepository.countConferenceAnalytics();
-
-      const rootStatistics = {
-        userCount,
-        scheduleGettingCount: scheduleGettingCount
-          ? scheduleGettingCount.toString()
-          : '0',
-        connectedToLessonsCount,
-      };
-
+      const rootStatistics = await this.rootStatistics();
       await this.redis.set('root-statistics', JSON.stringify(rootStatistics));
-
       return rootStatistics;
     }
 
