@@ -49,7 +49,10 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(NotFoundMiddleware)
-      .exclude({ path: 'meet/:conferenceId', method: RequestMethod.GET })
+      .exclude(
+        { path: '/', method: RequestMethod.GET },
+        { path: 'meet/:conferenceId', method: RequestMethod.GET },
+      )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }

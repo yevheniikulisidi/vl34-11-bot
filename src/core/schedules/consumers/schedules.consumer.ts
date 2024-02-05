@@ -6,7 +6,6 @@ import { Queue, Job } from 'bull';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { chain, isEqual } from 'lodash';
-import { ConferencesRepository } from 'src/core/conferences/repositories/conferences.repository';
 import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { NzService } from 'src/integrations/nz/nz.service';
@@ -27,7 +26,6 @@ export class SchedulesConsumer {
     private readonly schedulesService: SchedulesService,
     private readonly settingsRepository: SettingsRepository,
     private readonly usersRepository: UsersRepository,
-    private readonly conferencesRepository: ConferencesRepository,
   ) {}
 
   @OnQueueFailed()

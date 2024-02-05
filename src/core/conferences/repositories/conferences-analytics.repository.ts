@@ -15,4 +15,8 @@ export class ConferencesAnalyticsRepository {
   ) {
     return await this.prisma.conferenceAnalytics.create({ data, select });
   }
+
+  async countConferenceAnalytics() {
+    return await this.prisma.conferenceAnalytics.count();
+  }
 }

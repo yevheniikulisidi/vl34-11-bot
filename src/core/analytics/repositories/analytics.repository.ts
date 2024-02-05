@@ -26,16 +26,6 @@ export class AnalyticsRepository {
   }
 
   async countAnalytics() {
-    return await this.prisma.$transaction([
-      this.prisma.analytics.aggregate({
-        _sum: { count: true },
-        where: { scheduleClass: 'CLASS_11A' },
-      }),
-      this.prisma.analytics.aggregate({
-        _sum: { count: true },
-        where: { scheduleClass: 'CLASS_11B' },
-      }),
-      this.prisma.analytics.aggregate({ _sum: { count: true } }),
-    ]);
+    return await this.prisma.analytics.aggregate({ _sum: { count: true } });
   }
 }
