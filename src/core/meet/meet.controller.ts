@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Res, Headers } from '@nestjs/common';
 import { Response } from 'express';
+import dayjs from 'dayjs';
 import UAParser from 'ua-parser-js';
 import { ConferencesAnalyticsRepository } from '../conferences/repositories/conferences-analytics.repository';
 import { ConferencesRepository } from '../conferences/repositories/conferences.repository';
@@ -21,9 +22,22 @@ export class MeetController {
       await this.conferencesRepository.findConference(conferenceId);
 
     if (!conference) {
-      res.render('not-found', {
+      res.render('error', {
         error: 'Конференція не знайдена',
         message: 'Посилання на конференцію недійсне або неіснуюче.',
+      });
+      return;
+    }
+
+    const scheduleDate = dayjs.utc(conference.scheduleDate).tz('Europe/Kyiv');
+    const today = dayjs.utc().tz('Europe/Kyiv');
+
+    if (!scheduleDate.isSame(today, 'date')) {
+      res.render('error', {
+        error: 'Конференція минула',
+        message: `Ця конференція минула ${scheduleDate
+          .locale('uk')
+          .format('LL')}`,
       });
       return;
     }
