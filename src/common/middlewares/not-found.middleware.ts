@@ -4,6 +4,6 @@ import { Request, Response } from 'express';
 @Injectable()
 export class NotFoundMiddleware implements NestMiddleware {
   use(_req: Request, res: Response) {
-    res.redirect('/');
+    res.render('not-found');
   }
 }

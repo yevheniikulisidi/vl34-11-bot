@@ -23,17 +23,6 @@ export class RootService implements OnModuleInit {
     await this.rootStatisticsQueue.add({}, { jobId: 'main' });
   }
 
-  formatCount(count: number) {
-    if (count === 0) {
-      return '0';
-    } else if (count < 100) {
-      return `${count}`;
-    } else {
-      const hundreds = Math.floor(count / 100) * 100;
-      return `${hundreds.toLocaleString('uk')}+`;
-    }
-  }
-
   async rootStatistics(): Promise<RootStatistics> {
     const userCount = await this.usersRepository.countUsers();
     const {
