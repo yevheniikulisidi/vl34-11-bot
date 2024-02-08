@@ -35,9 +35,7 @@ export class MeetController {
     if (!scheduleDate.isSame(today, 'date')) {
       res.render('error', {
         error: 'Конференція минула',
-        message: `Ця конференція минула ${scheduleDate
-          .locale('uk')
-          .format('LL')}`,
+        message: 'Ця конференція вже минула.',
       });
       return;
     }
