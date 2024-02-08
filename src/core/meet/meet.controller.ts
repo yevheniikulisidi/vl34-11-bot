@@ -22,10 +22,7 @@ export class MeetController {
       await this.conferencesRepository.findConference(conferenceId);
 
     if (!conference) {
-      res.render('error', {
-        error: 'Конференція не знайдена',
-        message: 'Посилання на конференцію недійсне або неіснуюче.',
-      });
+      res.render('not-found');
       return;
     }
 
@@ -33,10 +30,7 @@ export class MeetController {
     const today = dayjs.utc().tz('Europe/Kyiv');
 
     if (!scheduleDate.isSame(today, 'date')) {
-      res.render('error', {
-        error: 'Конференція минула',
-        message: 'Ця конференція вже минула.',
-      });
+      res.render('not-found');
       return;
     }
 
