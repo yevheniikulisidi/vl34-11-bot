@@ -7,5 +7,9 @@
   },
   "forwardPorts": [3000],
   "postCreateCommand": "git flow init --defaults --tag v && git push --set-upstream origin develop && npm install && cp .env.example .env && docker compose up --detach",
-  "customizations": { "vscode": { "extensions": ["esbenp.prettier-vscode"] } }
+  "customizations": {
+    "vscode": {
+      "extensions": ["esbenp.prettier-vscode", "macabeus.vscode-fluent"]
+    }
+  }
 }
