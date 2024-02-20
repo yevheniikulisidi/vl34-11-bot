@@ -1,0 +1,15 @@
+{
+  "name": "vl34-11-bot",
+  "build": { "dockerfile": "Dockerfile" },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers-contrib/features/nestjs-cli:2": {}
+  },
+  "forwardPorts": [3000],
+  "postCreateCommand": "git flow init --defaults --tag v && git push --set-upstream origin develop && npm install && cp .env.example .env && docker compose up --detach",
+  "customizations": {
+    "vscode": {
+      "extensions": ["esbenp.prettier-vscode", "macabeus.vscode-fluent"]
+    }
+  }
+}

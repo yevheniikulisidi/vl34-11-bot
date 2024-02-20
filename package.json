@@ -1,6 +1,6 @@
 {
   "name": "vl34-11-bot",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Telegram bot for 11-A/B classes of Vinnytsia Lyceum #34",
   "author": "Yevhenii Kulisidi",
   "private": true,

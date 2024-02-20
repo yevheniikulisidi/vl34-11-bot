@@ -19,6 +19,7 @@ import { MyContext } from './types/my-context.type';
 export class TelegramService implements OnModuleInit {
   private readonly logger = new Logger(TelegramService.name);
   private readonly bot: Bot<MyContext>;
+  private readonly superAdminId: number;
 
   constructor(
     @InjectQueue('message-distribution')
@@ -37,6 +38,10 @@ export class TelegramService implements OnModuleInit {
         environment: clientEnvironment === 'production' ? 'prod' : 'test',
       },
     });
+
+    this.superAdminId = +this.configService.getOrThrow<number>(
+      'TELEGRAM_SUPER_ADMIN_ID',
+    );
   }
 
   onModuleInit() {
@@ -66,6 +71,10 @@ export class TelegramService implements OnModuleInit {
     this.onProfileChangeClassCallbackQuery();
     this.onProfileLessonUpdatesCallbackQuery();
     this.onProfileDailyScheduleCallbackQuery();
+
+    // Admin panel functions
+    this.onAdminPanelButton();
+    this.onAdminPanelDistanceEducationCallbackQuery();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -106,6 +115,10 @@ export class TelegramService implements OnModuleInit {
             Keyboard.text(ctx.t('buttons.profile')),
           ],
         ]).resized();
+      }
+
+      if (ctx.from.id === this.superAdminId) {
+        keyboard.append([[Keyboard.text(ctx.t('buttons.admin-panel'))]]);
       }
 
       await ctx.reply(ctx.t('start-text'), { reply_markup: keyboard });
@@ -714,5 +727,71 @@ export class TelegramService implements OnModuleInit {
         }
       }
     }
+  }
+
+  private onAdminPanelButton() {
+    this.bot
+      .chatType('private')
+      .filter(hears('buttons.admin-panel'), async (ctx) => {
+        if (ctx.from.id !== this.superAdminId) {
+          return;
+        }
+
+        const settings =
+          (await this.settingsRepository.findSettings({
+            isDistanceEducation: true,
+          })) ||
+          (await this.settingsRepository.createSettings({
+            isDistanceEducation: true,
+          }));
+
+        const keyboard = new InlineKeyboard().text(
+          ctx.t('admin-panel-keyboard.distance-education-button', {
+            isDistanceEducation: String(settings.isDistanceEducation),
+          }),
+          'admin-panel:distance-education',
+        );
+
+        await ctx.reply(ctx.t('admin-panel-text'), { reply_markup: keyboard });
+      });
+  }
+
+  private onAdminPanelDistanceEducationCallbackQuery() {
+    this.bot
+      .chatType('private')
+      .callbackQuery('admin-panel:distance-education', async (ctx) => {
+        if (ctx.from.id !== this.superAdminId) {
+          return;
+        }
+
+        const settings =
+          (await this.settingsRepository.findSettings({
+            id: true,
+            isDistanceEducation: true,
+          })) ||
+          (await this.settingsRepository.createSettings({
+            id: true,
+            isDistanceEducation: true,
+          }));
+
+        const updatedSettings = await this.settingsRepository.updateSettings(
+          settings.id,
+          { isDistanceEducation: !settings.isDistanceEducation },
+        );
+
+        const keyboard = new InlineKeyboard().text(
+          ctx.t('admin-panel-keyboard.distance-education-button', {
+            isDistanceEducation: String(updatedSettings.isDistanceEducation),
+          }),
+          'admin-panel:distance-education',
+        );
+
+        await ctx.editMessageReplyMarkup({ reply_markup: keyboard });
+        await ctx.answerCallbackQuery(
+          ctx.t('admin-panel.updated-distance-education-text', {
+            isDistanceEducation: String(updatedSettings.isDistanceEducation),
+          }),
+        );
+      });
   }
 }
