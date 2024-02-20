@@ -30,7 +30,7 @@ export class MeetController {
     const today = dayjs.utc().tz('Europe/Kyiv');
 
     if (!scheduleDate.isSame(today, 'date')) {
-      res.render('not-found');
+      res.render('past-conference');
       return;
     }
 
