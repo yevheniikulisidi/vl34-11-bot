@@ -432,12 +432,7 @@ export class TelegramService implements OnModuleInit {
         );
         const isNow = dayjs()
           .utc()
-          .isBetween(
-            scheduleLessonStartTime,
-            scheduleLessonEndTime,
-            null,
-            '[]',
-          );
+          .isBetween(scheduleLessonStartTime, scheduleLessonEndTime);
 
         let scheduleLessonText;
 
