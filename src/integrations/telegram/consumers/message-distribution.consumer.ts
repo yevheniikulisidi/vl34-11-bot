@@ -8,6 +8,7 @@ import {
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { TelegramService } from '../telegram.service';
+import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
 
 @Processor('message-distribution')
 export class MessageDistributionConsumer {
@@ -15,6 +16,7 @@ export class MessageDistributionConsumer {
     private readonly telegramService: TelegramService,
     private readonly usersRepository: UsersRepository,
     private readonly schedulesService: SchedulesService,
+    private readonly analyticsRepository: AnalyticsRepository,
   ) {}
 
   @Process('update')
@@ -107,11 +109,10 @@ export class MessageDistributionConsumer {
     }
 
     const today = dayjs().tz('Europe/Kyiv');
-    const scheduleDate = today.format('YYYY-MM-DD');
     const userClass = user.class === 'CLASS_11A' ? '11a' : '11b';
     const schedule = await this.schedulesService.getSchedule(
       userClass,
-      scheduleDate,
+      today.format('YYYY-MM-DD'),
     );
 
     if (schedule.length === 0) {
@@ -166,5 +167,22 @@ export class MessageDistributionConsumer {
     const scheduleText = `<b>${dayText}</b>\n\n${lessonsText}\n\n${nzProblemsText}`;
 
     await this.telegramService.sendMessage(job.data.userId, scheduleText);
+
+    const analytics = await this.analyticsRepository.findAnalytics(
+      user.class,
+      today.toISOString(),
+    );
+
+    if (!analytics) {
+      await this.analyticsRepository.createAnalytics(
+        user.class,
+        today.toISOString(),
+      );
+    } else {
+      await this.analyticsRepository.updateAnalytics(
+        user.class,
+        today.toISOString(),
+      );
+    }
   }
 }
