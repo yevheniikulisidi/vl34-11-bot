@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { User } from '@prisma/client';
 import { Queue } from 'bull';
 import dayjs from 'dayjs';
+import { NextFunction } from 'express';
 import { Bot, GrammyError, HttpError, Keyboard, InlineKeyboard } from 'grammy';
 import { join } from 'path';
 import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
@@ -13,6 +14,7 @@ import { ScheduleLesson } from 'src/core/schedules/interfaces/schedule.interface
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { SettingsRepository } from 'src/core/settings/repositories/settings.repository';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
+import { Season } from './enums/season.enum';
 import { MyContext } from './types/my-context.type';
 
 @Injectable()
@@ -205,7 +207,7 @@ export class TelegramService implements OnModuleInit {
   private onScheduleButton() {
     this.bot
       .chatType('private')
-      .filter(hears('buttons.schedule'), async (ctx) => {
+      .filter(hears('buttons.schedule'), this.vacation, async (ctx) => {
         const user = await this.usersRepository.findUser(ctx.from.id, {
           class: true,
         });
@@ -308,106 +310,111 @@ export class TelegramService implements OnModuleInit {
   private onScheduleCallbackQuery() {
     this.bot
       .chatType('private')
-      .callbackQuery(/^schedule:(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
-        const user = await this.usersRepository.findUser(ctx.from.id, {
-          class: true,
-        });
+      .callbackQuery(
+        /^schedule:(\d{4}-\d{2}-\d{2})$/,
+        this.vacation,
+        async (ctx) => {
+          const user = await this.usersRepository.findUser(ctx.from.id, {
+            class: true,
+          });
 
-        if (!user) {
-          await ctx.answerCallbackQuery();
-          return;
-        }
+          if (!user) {
+            await ctx.answerCallbackQuery();
+            return;
+          }
 
-        const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
-        const scheduleDate = dayjs.utc(ctx.match[1]).tz('Europe/Kyiv');
-        const scheduleLessons = await this.schedulesService.findScheduleLessons(
-          scheduleClass,
-          scheduleDate.format('YYYY-MM-DD'),
-        );
+          const scheduleClass = user.class === 'CLASS_11A' ? '11a' : '11b';
+          const scheduleDate = dayjs.utc(ctx.match[1]).tz('Europe/Kyiv');
+          const scheduleLessons =
+            await this.schedulesService.findScheduleLessons(
+              scheduleClass,
+              scheduleDate.format('YYYY-MM-DD'),
+            );
 
-        const nextMondayDate = dayjs
-          .utc()
-          .tz('Europe/Kyiv')
-          .locale('uk', { weekStart: 1 })
-          .startOf('week')
-          .add(1, 'week')
-          .startOf('week')
-          .format('YYYY-MM-DD');
-        const isNextMonday =
-          scheduleDate.format('YYYY-MM-DD') === nextMondayDate;
+          const nextMondayDate = dayjs
+            .utc()
+            .tz('Europe/Kyiv')
+            .locale('uk', { weekStart: 1 })
+            .startOf('week')
+            .add(1, 'week')
+            .startOf('week')
+            .format('YYYY-MM-DD');
+          const isNextMonday =
+            scheduleDate.format('YYYY-MM-DD') === nextMondayDate;
 
-        if (!scheduleLessons.length) {
-          await ctx.answerCallbackQuery(
-            ctx.t('no-schedule-lessons', {
+          if (!scheduleLessons.length) {
+            await ctx.answerCallbackQuery(
+              ctx.t('no-schedule-lessons', {
+                weekdayName: isNextMonday
+                  ? 'next-monday'
+                  : scheduleDate.format('dddd').toLocaleLowerCase(),
+              }),
+            );
+            return;
+          }
+
+          const settings =
+            (await this.settingsRepository.findSettings({
+              isDistanceEducation: true,
+            })) ||
+            (await this.settingsRepository.createSettings({
+              isDistanceEducation: true,
+            }));
+
+          const scheduleLessonsText = this.scheduleLessonsText(
+            ctx,
+            scheduleDate.format('YYYY-MM-DD'),
+            scheduleLessons,
+            settings.isDistanceEducation,
+          );
+
+          const updatedAtSchedule =
+            await this.schedulesService.getUpdatedAtSchedule(scheduleClass);
+
+          const isNzProblems = updatedAtSchedule
+            ? dayjs.utc().diff(dayjs.utc(updatedAtSchedule), 'minute') >= 10
+            : null;
+
+          const analytics = await this.analyticsRepository.findAnalytics(
+            user.class,
+            scheduleDate.toISOString(),
+          );
+
+          if (!analytics) {
+            await this.analyticsRepository.createAnalytics(
+              user.class,
+              scheduleDate.toISOString(),
+            );
+          } else {
+            await this.analyticsRepository.updateAnalytics(
+              user.class,
+              scheduleDate.toISOString(),
+            );
+          }
+
+          const lastUpdatedAtSchedule = dayjs
+            .utc(updatedAtSchedule)
+            .tz('Europe/Kyiv')
+            .locale('uk')
+            .format('DD.MM.YYYY о HH:mm');
+          const nzProblemsText = isNzProblems
+            ? `\n\n<b>⚠️ Увага! Розклад оновлено ${lastUpdatedAtSchedule}!</b>`
+            : '';
+
+          await ctx.editMessageText(
+            ctx.t('schedule-lessons-text.result', {
               weekdayName: isNextMonday
                 ? 'next-monday'
                 : scheduleDate.format('dddd').toLocaleLowerCase(),
-            }),
+              isToday: String(scheduleDate.isToday()),
+              weekdayDate: scheduleDate.format('DD.MM.YYYY'),
+              scheduleLessonsText,
+            }) + nzProblemsText,
+            { link_preview_options: { is_disabled: true } },
           );
-          return;
-        }
-
-        const settings =
-          (await this.settingsRepository.findSettings({
-            isDistanceEducation: true,
-          })) ||
-          (await this.settingsRepository.createSettings({
-            isDistanceEducation: true,
-          }));
-
-        const scheduleLessonsText = this.scheduleLessonsText(
-          ctx,
-          scheduleDate.format('YYYY-MM-DD'),
-          scheduleLessons,
-          settings.isDistanceEducation,
-        );
-
-        const updatedAtSchedule =
-          await this.schedulesService.getUpdatedAtSchedule(scheduleClass);
-
-        const isNzProblems = updatedAtSchedule
-          ? dayjs.utc().diff(dayjs.utc(updatedAtSchedule), 'minute') >= 10
-          : null;
-
-        const analytics = await this.analyticsRepository.findAnalytics(
-          user.class,
-          scheduleDate.toISOString(),
-        );
-
-        if (!analytics) {
-          await this.analyticsRepository.createAnalytics(
-            user.class,
-            scheduleDate.toISOString(),
-          );
-        } else {
-          await this.analyticsRepository.updateAnalytics(
-            user.class,
-            scheduleDate.toISOString(),
-          );
-        }
-
-        const lastUpdatedAtSchedule = dayjs
-          .utc(updatedAtSchedule)
-          .tz('Europe/Kyiv')
-          .locale('uk')
-          .format('DD.MM.YYYY о HH:mm');
-        const nzProblemsText = isNzProblems
-          ? `\n\n<b>⚠️ Увага! Розклад оновлено ${lastUpdatedAtSchedule}!</b>`
-          : '';
-
-        await ctx.editMessageText(
-          ctx.t('schedule-lessons-text.result', {
-            weekdayName: isNextMonday
-              ? 'next-monday'
-              : scheduleDate.format('dddd').toLocaleLowerCase(),
-            isToday: String(scheduleDate.isToday()),
-            weekdayDate: scheduleDate.format('DD.MM.YYYY'),
-            scheduleLessonsText,
-          }) + nzProblemsText,
-          { link_preview_options: { is_disabled: true } },
-        );
-        await ctx.answerCallbackQuery();
-      });
+          await ctx.answerCallbackQuery();
+        },
+      );
   }
 
   private scheduleLessonsText(
@@ -793,5 +800,74 @@ export class TelegramService implements OnModuleInit {
           }),
         );
       });
+  }
+
+  async vacation(ctx: MyContext, next: NextFunction): Promise<void> {
+    const vacations: { season: Season; startDate: string; endDate: string }[] =
+      [
+        {
+          season: Season.AUTUMN,
+          startDate: '2023-10-23',
+          endDate: '2023-10-29',
+        },
+        {
+          season: Season.WINTER,
+          startDate: '2023-12-23',
+          endDate: '2024-01-07',
+        },
+        {
+          season: Season.SPRING,
+          startDate: '2024-03-25',
+          endDate: '2024-03-31',
+        },
+        {
+          season: Season.SUMMER,
+          startDate: '2024-06-29',
+          endDate: '2024-08-31',
+        },
+      ];
+
+    const currentDate = dayjs.utc().tz('Europe/Kyiv');
+
+    const currentVacation = vacations.find((vacation) => {
+      const startDate = dayjs(vacation.startDate);
+      const endDate = dayjs(vacation.endDate);
+
+      return currentDate.isBetween(startDate, endDate, null, '[)');
+    });
+
+    if (currentVacation) {
+      let message: string;
+
+      switch (currentVacation.season) {
+        case Season.AUTUMN:
+          message = `<b>🍂 Осінні канікули!</b>`;
+          break;
+        case Season.WINTER:
+          message = `<b>❄️ Зимові канікули!</b>`;
+          break;
+        case Season.SPRING:
+          message = `<b>🌸 Весняні канікули!</b>`;
+          break;
+        case Season.SUMMER:
+          message = `<b>☀️ Літні канікули!</b>`;
+          break;
+      }
+
+      const startDateFormatted = dayjs(currentVacation.startDate)
+        .locale('uk')
+        .format('D MMMM YYYY');
+      const endDateFormatted = dayjs(currentVacation.endDate)
+        .locale('uk')
+        .format('D MMMM YYYY');
+
+      message += `\n\n<i>Канікули з ${startDateFormatted} до ${endDateFormatted}</i>`;
+
+      await ctx.reply(message);
+
+      return;
+    }
+
+    next();
   }
 }
