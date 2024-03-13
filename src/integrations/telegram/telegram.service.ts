@@ -251,7 +251,10 @@ export class TelegramService implements OnModuleInit {
             createKeyboardRow(
               weekdayName,
               weekdayNumber + 1,
-              currentWeekStart.day(weekdayNumber + 1).isToday(),
+              currentWeekStart
+                .day(weekdayNumber + 1)
+                .tz('Europe/Kyiv')
+                .isToday(),
             ),
           ),
         );
@@ -266,7 +269,10 @@ export class TelegramService implements OnModuleInit {
               InlineKeyboard.text(
                 ctx.t(`schedule-keyboard.${weekdayName}`, {
                   isToday: String(
-                    currentWeekStart.day(weekdayNumber).isToday(),
+                    currentWeekStart
+                      .day(weekdayNumber)
+                      .tz('Europe/Kyiv')
+                      .isToday(),
                   ),
                 }),
                 `schedule:${currentWeekStart
@@ -294,7 +300,7 @@ export class TelegramService implements OnModuleInit {
           ),
         );
 
-        if (currentWeekStart.day(7).isToday()) {
+        if (currentWeekStart.day(7).tz('Europe/Kyiv').isToday()) {
           keyboard.row(
             InlineKeyboard.text(
               ctx.t('schedule-keyboard.next-monday'),
@@ -406,7 +412,7 @@ export class TelegramService implements OnModuleInit {
               weekdayName: isNextMonday
                 ? 'next-monday'
                 : scheduleDate.format('dddd').toLocaleLowerCase(),
-              isToday: String(scheduleDate.isToday()),
+              isToday: String(scheduleDate.tz('Europe/Kyiv').isToday()),
               weekdayDate: scheduleDate.format('DD.MM.YYYY'),
               scheduleLessonsText,
             }) + nzProblemsText,
