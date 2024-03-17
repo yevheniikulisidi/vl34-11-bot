@@ -1,14 +1,15 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
 import dayjs from 'dayjs';
+import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
 import {
   LessonUpdates,
   LessonUpdateType,
 } from 'src/core/schedules/interfaces/lesson-updates.interface';
 import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
+import { Season } from '../enums/season.enum';
 import { TelegramService } from '../telegram.service';
-import { AnalyticsRepository } from 'src/core/analytics/repositories/analytics.repository';
 
 @Processor('message-distribution')
 export class MessageDistributionConsumer {
@@ -102,6 +103,43 @@ export class MessageDistributionConsumer {
 
   @Process('daily-schedule')
   async onDailySchedule(job: Job<{ userId: string }>) {
+    const vacations: { season: Season; startDate: string; endDate: string }[] =
+      [
+        {
+          season: Season.AUTUMN,
+          startDate: '2023-10-23',
+          endDate: '2023-10-29',
+        },
+        {
+          season: Season.WINTER,
+          startDate: '2023-12-23',
+          endDate: '2024-01-07',
+        },
+        {
+          season: Season.SPRING,
+          startDate: '2024-03-25',
+          endDate: '2024-03-31',
+        },
+        {
+          season: Season.SUMMER,
+          startDate: '2024-06-29',
+          endDate: '2024-08-31',
+        },
+      ];
+
+    const currentDate = dayjs.utc().tz('Europe/Kyiv');
+
+    const currentVacation = vacations.find((vacation) => {
+      const startDate = dayjs(vacation.startDate);
+      const endDate = dayjs(vacation.endDate);
+
+      return currentDate.isBetween(startDate, endDate, null, '[]');
+    });
+
+    if (currentVacation) {
+      return;
+    }
+
     const user = await this.usersRepository.findUser(+job.data.userId);
 
     if (!user) {
