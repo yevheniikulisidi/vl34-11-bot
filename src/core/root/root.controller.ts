@@ -1,5 +1,4 @@
 import { Controller, Get, Render } from '@nestjs/common';
-import numeral from 'numeral';
 import { RootService } from './root.service';
 
 @Controller()
@@ -12,13 +11,13 @@ export class RootController {
     const rootStatistics = await this.rootService.getRootStatistics();
 
     return {
-      userCount: numeral(rootStatistics.userCount).format('0 a'),
-      scheduleGettingCount: numeral(rootStatistics.scheduleGettingCount).format(
-        '0 a',
+      userCount: this.rootService.roundCount(rootStatistics.userCount),
+      scheduleGettingCount: this.rootService.roundCount(
+        rootStatistics.scheduleGettingCount,
       ),
-      connectedToLessonsCount: numeral(
+      connectedToLessonsCount: this.rootService.roundCount(
         rootStatistics.connectedToLessonsCount,
-      ).format('0 a'),
+      ),
     };
   }
 }

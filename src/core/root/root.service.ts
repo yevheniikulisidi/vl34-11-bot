@@ -51,4 +51,14 @@ export class RootService implements OnModuleInit {
 
     return JSON.parse(cachedRootStatistics);
   }
+
+  roundCount(count: number) {
+    if (count < 100) {
+      return count;
+    } else if (count < 10000) {
+      return Math.floor(count / 100) * 100 + '+';
+    } else {
+      return (Math.floor(count / 1000) * 1000).toLocaleString('uk') + '+';
+    }
+  }
 }
