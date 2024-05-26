@@ -16,6 +16,7 @@ import { SettingsRepository } from 'src/core/settings/repositories/settings.repo
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { Season } from './enums/season.enum';
 import { MyContext } from './types/my-context.type';
+import { InputMediaPhoto } from 'grammy/types';
 
 @Injectable()
 export class TelegramService implements OnModuleInit {
@@ -77,6 +78,9 @@ export class TelegramService implements OnModuleInit {
     // Admin panel functions
     this.onAdminPanelButton();
     this.onAdminPanelDistanceEducationCallbackQuery();
+
+    // Admin (The End)
+    this.onAdminTheEndCommand();
 
     this.bot.start({
       allowed_updates: ['callback_query', 'message'],
@@ -742,6 +746,23 @@ export class TelegramService implements OnModuleInit {
     }
   }
 
+  async sendTheEndMessage(
+    userId: string,
+    media: InputMediaPhoto[],
+    text: string,
+  ) {
+    try {
+      await this.bot.api.sendMediaGroup(userId, media);
+      await this.bot.api.sendMessage(userId, text);
+    } catch (error) {
+      if (error instanceof GrammyError) {
+        if (error.error_code === 403) {
+          return;
+        }
+      }
+    }
+  }
+
   private onAdminPanelButton() {
     this.bot
       .chatType('private')
@@ -875,5 +896,22 @@ export class TelegramService implements OnModuleInit {
     }
 
     next();
+  }
+
+  async onAdminTheEndCommand() {
+    this.bot.chatType('private').command('theend', async (ctx) => {
+      if (this.superAdminId !== ctx.from.id) return;
+
+      const users = await this.usersRepository.findUsersWithId();
+
+      await this.messageDistributionQueue.addBulk(
+        users.map((user) => ({
+          data: { userId: user.id.toString() },
+          name: 'theend',
+        })),
+      );
+
+      await ctx.reply('Розсилка успішна ✅');
+    });
   }
 }

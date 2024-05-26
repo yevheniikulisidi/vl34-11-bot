@@ -10,6 +10,9 @@ import { SchedulesService } from 'src/core/schedules/schedules.service';
 import { UsersRepository } from 'src/core/users/repositories/users.repository';
 import { Season } from '../enums/season.enum';
 import { TelegramService } from '../telegram.service';
+import { readdir } from 'fs/promises';
+import { join } from 'path';
+import { InputFile, InputMediaBuilder } from 'grammy';
 
 @Processor('message-distribution')
 export class MessageDistributionConsumer {
@@ -32,6 +35,30 @@ export class MessageDistributionConsumer {
     const updateText = `<b>${updateTitleText}</b>` + '\n\n' + updateContentText;
 
     await this.telegramService.sendMessage(job.data.userId, updateText);
+  }
+
+  @Process('theend')
+  async onTheEnd(job: Job<{ userId: string }>) {
+    const theEndText =
+      'Ну що ж, настав цей день. Останній дзвінок і прощання з нашим рідним ліцеєм. Здається, лише недавно, 11 років тому, ми вперше переступили поріг першого класу. Тоді нам здавалося, що попереду ціла вічність, але ось і все – 11 років промайнули, як одна мить. Це були незабутні часи, наповнені радощами, труднощами, новими знаннями та справжніми друзями. Тепер перед нами відкривається новий етап життя, повний мрій і можливостей.' +
+      '\n\nДякую Вам за те, що користувалися цим ботом. Я постійно вдосконалював його, прислухаючись до Ваших ідей та побажань. Бот працював 8 місяців для наших класів 11-А та 11-Б. Було вкладено багато сил і подолано чимало проблем. Я вдячний Вам за підтримку та активність, які допомогли зробити цей проєкт кращим.' +
+      "\n\nПеред нами стоять нові виклики та можливості. Ми всі різні, але кожен має потенціал досягти великих висот у житті. Пам'ятайте про підтримку одне одного та про уроки, які ми отримали в ліцеї. Вірю, що наше майбутнє буде яскравим і наповненим досягненнями, а дружба та знання, здобуті тут, супроводжуватимуть нас у всіх нових починаннях.";
+
+    const assests = await readdir(
+      join(__dirname, '..', '..', '..', '..', 'assets'),
+    );
+
+    await this.telegramService.sendTheEndMessage(
+      job.data.userId,
+      assests.map((assetFile) =>
+        InputMediaBuilder.photo(
+          new InputFile(
+            join(__dirname, '..', '..', '..', '..', 'assets', assetFile),
+          ),
+        ),
+      ),
+      theEndText,
+    );
   }
 
   @Process('lesson-updates')
