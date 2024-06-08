@@ -1,73 +1,91 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+# Telegram bot for Vinnytsia Lyceum No. 34 🤖
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+This bot is designed for eleventh-grade students to prevent inconveniences and frequent problems with the unavailability of the electronic journal "New Knowledge."
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+<div style="display: flex; align-items: flex-start;">
+    <div style="flex: 1;">
+        <h3>Main functions of the bot:</h3>
+        <ul>
+            <li><strong>Quick and convenient access to the schedule</strong>: Instant access to the current schedule of classes.</li>
+            <li><strong>One-click connection to online lessons</strong>: Ability to join online lessons directly from the schedule.</li>
+            <li><strong>Instant notifications of schedule changes</strong>: Prompt notification of any changes to the schedule.</li>
+            <li><strong>Daily lesson schedule at 7:30</strong>: Automatic sending of the daily lesson schedule every day at 7:30 in the morning.</li>
+        </ul>
+        <p>This bot provides convenient and reliable access to the schedule, helping students efficiently plan their study day and promptly respond to changes.</p>
+    </div>
+    <div style="flex: 1;">
+        <img src="assets/bot-screenshot.png" alt="Bot screenshot" style="width: 100%; max-width: 250px;">
+    </div>
+</div>
 
 ## Installation
 
-```bash
-$ npm install
-```
+### Prerequisites
 
-## Running the app
+To run this bot, you need to have Docker installed. You can download Docker from the [official website](https://www.docker.com/get-started).
 
-```bash
-# development
-$ npm run start
+### Instructions
 
-# watch mode
-$ npm run start:dev
+1. **Clone the repository**:
 
-# production mode
-$ npm run start:prod
-```
+   ```bash
+   git clone https://github.com/yevheniikulisidi/vl34-11-bot.git
+   cd vl34-11-bot
+   ```
 
-## Test
+2. **Install dependencies**:
 
-```bash
-# unit tests
-$ npm run test
+   ```bash
+   npm install
+   ```
 
-# e2e tests
-$ npm run test:e2e
+3. **Configure the environment**:
+   - Copy the `.env.example` file to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   - Fill in the environment variables in the `.env` file (note that without student credentials, the bot will not be able to function properly).
 
-# test coverage
-$ npm run test:cov
-```
+## Usage
 
-## Support
+1. **Run Docker containers in detached mode**:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+   ```bash
+   docker-compose up -d
+   ```
 
-## Stay in touch
+2. **Run in development mode**:
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+   ```bash
+   npm run start
+   ```
 
-## License
+3. **Run in watch mode**:
 
-Nest is [MIT licensed](LICENSE).
+   ```bash
+   npm run start:dev
+   ```
+
+4. **Run in production mode**:
+   ```bash
+   npm run start:prod
+   ```
+
+After completing these steps, the bot will be ready to work and respond to commands from users.
+
+## Statistics
+
+The bot has been running since **2024** and has been in operation for more than **5** months.
+
+### Photos
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/en-active-users.png" alt="Active Users" style="width: 100%; max-width: 350px;"></td>
+    <td align="center"><img src="assets/en-lesson-connections.png" alt="Lesson Connections" style="width: 100%; max-width: 350px;"></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/en-preventing-unavailability.png" alt="Preventing Unavailability" style="width: 100%; max-width: 350px;"></td>
+    <td align="center"><img src="assets/en-received-schedules.png" alt="Received Schedules" style="width: 100%; max-width: 350px;"></td>
+  </tr>
+</table>
