@@ -18,6 +18,23 @@ This bot is designed for eleventh-grade students to prevent inconveniences and f
     </div>
 </div>
 
+## Statistics
+
+The bot has been running since **2024** and has been in operation for more than **5** months.
+
+### Photos
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/en-active-users.png" alt="Active Users" style="width: 100%; max-width: 350px;"></td>
+    <td align="center"><img src="assets/en-lesson-connections.png" alt="Lesson Connections" style="width: 100%; max-width: 350px;"></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/en-preventing-unavailability.png" alt="Preventing Unavailability" style="width: 100%; max-width: 350px;"></td>
+    <td align="center"><img src="assets/en-received-schedules.png" alt="Received Schedules" style="width: 100%; max-width: 350px;"></td>
+  </tr>
+</table>
+
 ## Installation
 
 ### Prerequisites
@@ -72,20 +89,3 @@ To run this bot, you need to have Docker installed. You can download Docker from
    ```
 
 After completing these steps, the bot will be ready to work and respond to commands from users.
-
-## Statistics
-
-The bot has been running since **2024** and has been in operation for more than **5** months.
-
-### Photos
-
-<table>
-  <tr>
-    <td align="center"><img src="assets/en-active-users.png" alt="Active Users" style="width: 100%; max-width: 350px;"></td>
-    <td align="center"><img src="assets/en-lesson-connections.png" alt="Lesson Connections" style="width: 100%; max-width: 350px;"></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/en-preventing-unavailability.png" alt="Preventing Unavailability" style="width: 100%; max-width: 350px;"></td>
-    <td align="center"><img src="assets/en-received-schedules.png" alt="Received Schedules" style="width: 100%; max-width: 350px;"></td>
-  </tr>
-</table>
